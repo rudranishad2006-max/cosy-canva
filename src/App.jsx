@@ -908,10 +908,10 @@ export default function App() {
       </header>
 
       {/* Main Workspace Wrapper (Left: Canvas/Toolbar, Right: Chat Sidebar) */}
-      <div className="flex-grow flex flex-row overflow-hidden relative w-full">
+      <div className="flex-grow flex flex-row overflow-hidden relative w-full min-h-0">
         
         {/* Left Section: Canvas and Bottom Toolbar */}
-        <div className="flex-grow flex flex-col justify-between items-center relative overflow-hidden h-full w-full">
+        <div className="flex-grow flex flex-col justify-between items-center relative overflow-hidden h-full w-full min-h-0">
           
           {/* 2. Main Work Area (Canvas Polaroid Frame) */}
           <main className="flex-grow flex items-center justify-center p-4 relative z-10 w-full">
@@ -1062,7 +1062,7 @@ export default function App() {
 
         {/* Right Section: Collapsible Chat Sidebar */}
         {showChat && (
-          <div className="w-full sm:w-80 h-full bg-[#F5EBE6]/95 backdrop-blur border-l border-[#d0c0b6] flex flex-col z-30 transition-all duration-300 relative shadow-2xl shrink-0 absolute right-0 sm:relative">
+          <div className="w-full sm:w-80 h-full bg-[#F5EBE6]/95 backdrop-blur border-l border-[#d0c0b6] flex flex-col z-30 transition-all duration-300 relative shadow-2xl shrink-0 absolute right-0 sm:relative min-h-0">
             
             {/* Chat Header */}
             <div className="px-4 py-3 border-b border-[#d8c7bd] flex justify-between items-center bg-[#EADCD3]/40">
@@ -1080,7 +1080,7 @@ export default function App() {
             </div>
 
             {/* Message History */}
-            <div className="flex-grow overflow-y-auto p-4 space-y-3 flex flex-col" id="cozy-chat-messages">
+            <div className="flex-grow h-0 min-h-0 overflow-y-auto p-4 space-y-3 flex flex-col" id="cozy-chat-messages">
               {messages.length === 0 ? (
                 <div className="flex-grow flex flex-col items-center justify-center text-center p-6 text-stone-400">
                   <div className="w-10 h-10 rounded-full bg-stone-50/55 flex items-center justify-center mb-2">
