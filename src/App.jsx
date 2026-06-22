@@ -140,6 +140,17 @@ const parseFirebaseConfig = (text) => {
 
 export default function App() {
   // 1. Firebase Config Management
+  // Tip: If you want to bake your database configuration directly into the app so users don't have to enter it:
+  // Set your config object here instead of null:
+  const DEFAULT_FIREBASE_CONFIG = {
+    apiKey: "AIzaSyAq7tZt6kn5bJXNguxIuX3__0AopTh1nyk",
+    authDomain: "test-e33f5.firebaseapp.com",
+    projectId: "test-e33f5",
+    storageBucket: "test-e33f5.firebasestorage.app",
+    messagingSenderId: "506111090456",
+    appId: "1:506111090456:web:61ad48eefdc439e63c086d"
+  };
+
   const [firebaseConfig, setFirebaseConfig] = useState(() => {
     const saved = localStorage.getItem('cozy_canvas_db_config');
     if (saved) {
@@ -155,7 +166,7 @@ export default function App() {
         appId: import.meta.env.VITE_FIREBASE_APP_ID,
       };
     }
-    return null;
+    return DEFAULT_FIREBASE_CONFIG;
   });
 
   const [configInput, setConfigInput] = useState('');
