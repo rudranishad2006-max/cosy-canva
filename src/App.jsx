@@ -1069,7 +1069,7 @@ export default function App() {
 
         {/* Right Section: Collapsible Chat Sidebar */}
         {showChat && (
-          <div className="w-full sm:w-80 h-full bg-[#F5EBE6]/95 backdrop-blur border-l border-[#d0c0b6] flex flex-col z-30 transition-all duration-300 relative shadow-2xl shrink-0 absolute right-0 sm:relative min-h-0">
+          <div className="fixed inset-y-0 right-0 w-full sm:static sm:h-full sm:w-80 bg-[#F5EBE6]/95 backdrop-blur border-l border-[#d0c0b6] flex flex-col z-30 transition-all duration-300 shadow-2xl shrink-0 min-h-0">
             
             {/* Chat Header */}
             <div className="px-4 py-3 border-b border-[#d8c7bd] flex justify-between items-center bg-[#EADCD3]/40">
