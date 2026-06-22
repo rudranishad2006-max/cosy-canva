@@ -823,7 +823,7 @@ export default function App() {
         {/* Aspect-Locked Center Frame */}
         <div className="w-full max-w-[min(90vw,70vh)] max-h-[min(90vw,70vh)] aspect-square bg-white rounded-3xl p-4 md:p-6 shadow-2xl border border-stone-200/40 flex items-center justify-center relative select-none">
           
-          <div className="w-full h-full rounded-2xl overflow-hidden relative border border-stone-100 bg-cream-grid">
+          <div className="w-full h-full rounded-2xl overflow-hidden relative border-2 border-stone-300 bg-cream-grid shadow-[inset_0_2px_8px_rgba(0,0,0,0.08)]">
             {/* Canvas */}
             <canvas
               ref={canvasRef}
