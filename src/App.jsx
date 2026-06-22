@@ -843,7 +843,7 @@ export default function App() {
 
   // Screen D: Cozy Collaborative Drawing Canvas Screen
   return (
-    <div className="h-screen bg-cream-grid flex flex-col relative overflow-hidden">
+    <div className="min-h-screen bg-cream-grid flex flex-col relative">
       
       {/* 1. Header Area */}
       <header className="flex justify-between items-center px-6 py-4 bg-white/30 backdrop-blur-sm border-b border-stone-200/30 z-20">
