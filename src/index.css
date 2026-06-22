@@ -63,3 +63,22 @@ body {
 .canvas-drawing {
   cursor: none;
 }
+
+/* Custom range input styling */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+  background: #e4d5c9; /* Visible nude track bar */
+  height: 6px;
+  border-radius: 9999px;
+}
+
+input[type="range"]::-moz-range-track {
+  background: #e4d5c9;
+  height: 6px;
+  border-radius: 9999px;
+}

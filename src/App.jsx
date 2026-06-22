@@ -823,7 +823,7 @@ export default function App() {
         {/* Polaroid Center Frame */}
         <div className="w-full max-w-[min(90vw,58vh)] bg-white rounded-3xl pt-4 px-4 pb-10 md:pt-6 md:px-6 md:pb-14 shadow-2xl border border-stone-200/40 flex flex-col gap-2.5 relative select-none">
           
-          <div className="w-full aspect-square rounded-2xl overflow-hidden relative border-2 border-stone-300 bg-cream-grid shadow-[inset_0_2px_8px_rgba(0,0,0,0.08)]">
+          <div className="w-full aspect-square rounded-2xl overflow-hidden relative border-4 border-rose-300/90 bg-cream-grid shadow-[0_0_18px_rgba(244,63,94,0.18),inset_0_2px_8px_rgba(0,0,0,0.06)]">
             {/* Canvas */}
             <canvas
               ref={canvasRef}
@@ -860,11 +860,15 @@ export default function App() {
             )}
           </div>
 
-          {/* Polaroid Caption */}
-          <div className="flex items-center justify-center font-handwritten text-stone-500 text-xl md:text-2xl select-none tracking-wider pt-1 gap-2">
-            <span className="font-semibold">{nickname}</span>
-            <Heart className="w-4 h-4 text-rose-400 fill-rose-300 animate-pulse" />
-            <span className="font-semibold">{partner ? partner.name : 'Partner'}</span>
+          {/* Polaroid Caption - Cute Emojis instead of names */}
+          <div className="flex items-center justify-center text-xl md:text-2xl select-none tracking-widest pt-1 gap-1.5">
+            <span>🧸</span>
+            <span>🌸</span>
+            <span>✨</span>
+            <Heart className="w-5 h-5 text-rose-400 fill-rose-300 animate-pulse" />
+            <span>✨</span>
+            <span>🌸</span>
+            <span>🧸</span>
           </div>
         </div>
       </main>
@@ -872,8 +876,8 @@ export default function App() {
       {/* 3. Cozy Bottom Toolbar */}
       <footer className="w-full p-4 flex flex-col items-center z-20 bg-gradient-to-t from-[#fdfbf7] via-[#fdfbf7]/95 to-transparent pb-6">
         
-        {/* Core Control Panel */}
-        <div className="w-full max-w-lg bg-white/80 backdrop-blur rounded-3xl px-6 py-4 shadow-xl border border-stone-200/40 flex flex-col gap-4">
+        {/* Core Control Panel (Nude Color Box) */}
+        <div className="w-full max-w-lg bg-[#EADCD3]/95 backdrop-blur rounded-3xl px-6 py-4 shadow-xl border border-[#d0c0b6] flex flex-col gap-4">
           
           <div className="flex flex-wrap items-center justify-between gap-4">
             
@@ -906,14 +910,14 @@ export default function App() {
                 max="30"
                 value={activeSize}
                 onChange={(e) => setActiveSize(parseInt(e.target.value))}
-                className="w-full accent-rose-400 cursor-pointer h-1.5 bg-stone-100 rounded-lg appearance-none"
+                className="w-full accent-rose-400 cursor-pointer h-1.5 bg-transparent appearance-none"
               />
               <span className="text-[11px] font-bold text-stone-500 w-5 text-right">{activeSize}px</span>
             </div>
 
           </div>
 
-          <div className="h-px bg-stone-100" />
+          <div className="h-px bg-[#d0c0b6]/60" />
 
           {/* Action Buttons */}
           <div className="flex items-center justify-between">
