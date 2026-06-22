@@ -541,9 +541,16 @@ export default function App() {
     // Trigger instant canvas refresh for starting dot
     const ctx = canvas.getContext('2d');
     ctx.beginPath();
-    ctx.fillStyle = activeColor;
+    if (activeTool === 'eraser') {
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.fillStyle = 'rgba(0,0,0,1)';
+    } else {
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.fillStyle = activeColor;
+    }
     ctx.arc(x, y, activeSize / 2, 0, Math.PI * 2);
     ctx.fill();
+    ctx.globalCompositeOperation = 'source-over'; // Reset
 
     updatePresenceCursorImmediate(x, y, true, [{ x, y }]);
   };
@@ -566,6 +573,11 @@ export default function App() {
       // Instantly draw line segment locally
       const ctx = canvas.getContext('2d');
       ctx.beginPath();
+      if (activeTool === 'eraser') {
+        ctx.globalCompositeOperation = 'destination-out';
+      } else {
+        ctx.globalCompositeOperation = 'source-over';
+      }
       ctx.strokeStyle = activeColor;
       ctx.lineWidth = activeSize;
       ctx.lineCap = 'round';
@@ -573,6 +585,7 @@ export default function App() {
       ctx.moveTo(lastPoint.x, lastPoint.y);
       ctx.lineTo(newPoint.x, newPoint.y);
       ctx.stroke();
+      ctx.globalCompositeOperation = 'source-over'; // Reset
 
       updatePresenceCursor(x, y, true, currentStrokePoints.current);
     } else {
