@@ -820,10 +820,10 @@ export default function App() {
       {/* 2. Main Work Area (Canvas Polaroid Frame) */}
       <main className="flex-grow flex items-center justify-center p-4 relative z-10">
         
-        {/* Aspect-Locked Center Frame */}
-        <div className="w-full max-w-[min(90vw,70vh)] max-h-[min(90vw,70vh)] aspect-square bg-white rounded-3xl p-4 md:p-6 shadow-2xl border border-stone-200/40 flex items-center justify-center relative select-none">
+        {/* Polaroid Center Frame */}
+        <div className="w-full max-w-[min(90vw,70vh)] bg-white rounded-3xl pt-4 px-4 pb-12 md:pt-6 md:px-6 md:pb-16 shadow-2xl border border-stone-200/40 flex flex-col gap-3 relative select-none">
           
-          <div className="w-full h-full rounded-2xl overflow-hidden relative border-2 border-stone-300 bg-cream-grid shadow-[inset_0_2px_8px_rgba(0,0,0,0.08)]">
+          <div className="w-full aspect-square rounded-2xl overflow-hidden relative border-2 border-stone-300 bg-cream-grid shadow-[inset_0_2px_8px_rgba(0,0,0,0.08)]">
             {/* Canvas */}
             <canvas
               ref={canvasRef}
@@ -859,11 +859,18 @@ export default function App() {
               </div>
             )}
           </div>
+
+          {/* Polaroid Caption */}
+          <div className="flex items-center justify-center font-handwritten text-stone-500 text-2xl md:text-3xl select-none tracking-wider pt-1 gap-2">
+            <span className="font-semibold">{nickname}</span>
+            <Heart className="w-5 h-5 text-rose-400 fill-rose-300 animate-pulse" />
+            <span className="font-semibold">{partner ? partner.name : 'Partner'}</span>
+          </div>
         </div>
       </main>
 
       {/* 3. Cozy Bottom Toolbar */}
-      <footer className="w-full p-4 flex flex-col items-center z-20 bg-gradient-to-t from-cream-grid via-cream-grid/95 to-transparent pb-6">
+      <footer className="w-full p-4 flex flex-col items-center z-20 bg-gradient-to-t from-[#fdfbf7] via-[#fdfbf7]/95 to-transparent pb-6">
         
         {/* Core Control Panel */}
         <div className="w-full max-w-lg bg-white/80 backdrop-blur rounded-3xl px-6 py-4 shadow-xl border border-stone-200/40 flex flex-col gap-4">
