@@ -12,11 +12,13 @@ import {
   Check, 
   Settings, 
   Heart, 
+  HeartOff, 
   Share2, 
   LogOut,
   MessageSquare,
   Send,
-  X 
+  X,
+  Eraser 
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -109,11 +111,11 @@ const useThrottle = (callback, delay) => {
         clearTimeout(timeout.current);
         timeout.current = null;
       }
-      callback(...args);
+      latestCallback.current(...args);
       lastCalled.current = now;
     } else if (!timeout.current) {
       timeout.current = setTimeout(() => {
-        callback(...args);
+        latestCallback.current(...args);
         lastCalled.current = Date.now();
         timeout.current = null;
       }, remaining);
@@ -217,8 +219,10 @@ export default function App() {
   const [strokes, setStrokes] = useState([]);
   const [clearedAtTime, setClearedAtTime] = useState(0);
   const [presenceList, setPresenceList] = useState([]);
+  const [presenceLoaded, setPresenceLoaded] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [activeTool, setActiveTool] = useState('pen'); // 'pen' | 'eraser'
 
   // 4.1 Chat States
   const [messages, setMessages] = useState([]);
@@ -226,6 +230,18 @@ export default function App() {
   const [showChat, setShowChat] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const messagesEndRef = useRef(null);
+  const messagesLoadedRef = useRef(false);
+
+  // 4.2 Admin Panel States
+  const [isAdminMode, setIsAdminMode] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('admin') === 'true';
+  });
+  const [adminAuthenticated, setAdminAuthenticated] = useState(false);
+  const [adminPasscodeInput, setAdminPasscodeInput] = useState('');
+  const [adminError, setAdminError] = useState('');
+  const [adminRoomsList, setAdminRoomsList] = useState([]);
+  const [adminLoading, setAdminLoading] = useState(false);
 
   // Auto scroll to bottom of chat
   useEffect(() => {
@@ -242,7 +258,17 @@ export default function App() {
       window.history.replaceState(null, '', `?${params.toString()}`);
     } else {
       params.delete('room');
-      window.history.replaceState(null, '', window.location.pathname);
+      const newQuery = params.toString();
+      window.history.replaceState(null, '', newQuery ? `?${newQuery}` : window.location.pathname);
+    }
+  }, [roomCode]);
+
+  // Reset presenceLoaded, presenceList, and messagesLoaded states when leaving the room
+  useEffect(() => {
+    if (!roomCode) {
+      setPresenceLoaded(false);
+      setPresenceList([]);
+      messagesLoadedRef.current = false;
     }
   }, [roomCode]);
 
@@ -301,7 +327,7 @@ export default function App() {
         list.push({ id: docSnap.id, ...docSnap.data() });
       });
       setMessages((prevMessages) => {
-        if (!showChatRef.current && prevMessages.length > 0) {
+        if (!showChatRef.current && messagesLoadedRef.current) {
           const prevIds = new Set(prevMessages.map(m => m.id));
           const newPartnerMsgs = list.filter(m => !prevIds.has(m.id) && m.sender !== nickname);
           if (newPartnerMsgs.length > 0) {
@@ -310,6 +336,7 @@ export default function App() {
         }
         return list;
       });
+      messagesLoadedRef.current = true;
     });
     return () => unsubscribe();
   }, [db, roomCode, nickname]);
@@ -322,9 +349,19 @@ export default function App() {
     });
   }, [strokes, clearedAtTime]);
 
+  const activePresences = useMemo(() => {
+    return presenceList.filter(p => Date.now() - p.lastActive < 15000);
+  }, [presenceList]);
+
+  const partner = activePresences[0]; // Designed for couples (only 1 active partner)
+  const isPartnerOnline = !!partner;
+
+  const activeOthersCount = activePresences.length;
+  const isRoomFull = activeOthersCount >= 2;
+
   // DB Sync 4: Presence & Heartbeat Listeners
   useEffect(() => {
-    if (!db || !roomCode || !nickname || !userId) return;
+    if (!db || !roomCode || !nickname || !userId || !presenceLoaded || isRoomFull) return;
 
     const presenceRef = doc(db, 'rooms', roomCode, 'presence', userId);
     
@@ -339,6 +376,7 @@ export default function App() {
           isDrawing: drawing,
           activeColor,
           activeSize,
+          activeTool,
           currentPoints: points,
           lastActive: Date.now()
         });
@@ -360,7 +398,7 @@ export default function App() {
       clearInterval(interval);
       deleteDoc(presenceRef).catch(() => {});
     };
-  }, [db, roomCode, nickname, userId, activeColor, activeSize]);
+  }, [db, roomCode, nickname, userId, activeColor, activeSize, presenceLoaded, isRoomFull, activeTool]);
 
   // DB Sync 5: Listen to Partner Presence
   useEffect(() => {
@@ -375,12 +413,14 @@ export default function App() {
         }
       });
       setPresenceList(list);
+      setPresenceLoaded(true);
+    }, (error) => {
+      console.error("Presence listen error:", error);
+      setPresenceLoaded(true); // fallback to unblock
     });
     return () => unsubscribe();
   }, [db, roomCode, userId]);
 
-  const partner = presenceList[0]; // Designed for couples (only 1 partner active)
-  const isPartnerOnline = partner && (Date.now() - partner.lastActive < 15000);
 
   // Throttled Presence Writer for drawing / pointermove updates
   const updatePresenceCursor = useThrottle((x, y, drawing, points) => {
@@ -391,6 +431,7 @@ export default function App() {
       y,
       isDrawing: drawing,
       currentPoints: points,
+      activeTool,
       lastActive: Date.now()
     }).catch(() => {});
   }, 80);
@@ -404,6 +445,7 @@ export default function App() {
       y,
       isDrawing: drawing,
       currentPoints: points,
+      activeTool,
       lastActive: Date.now()
     }).catch(() => {});
   };
@@ -412,6 +454,14 @@ export default function App() {
   const drawStroke = (ctx, stroke) => {
     if (!stroke.points || stroke.points.length === 0) return;
     ctx.beginPath();
+    
+    // Support transparent erasing
+    if (stroke.isEraser) {
+      ctx.globalCompositeOperation = 'destination-out';
+    } else {
+      ctx.globalCompositeOperation = 'source-over';
+    }
+
     ctx.strokeStyle = stroke.color;
     ctx.lineWidth = stroke.size;
     ctx.lineCap = 'round';
@@ -422,6 +472,9 @@ export default function App() {
       ctx.lineTo(stroke.points[i].x, stroke.points[i].y);
     }
     ctx.stroke();
+
+    // Reset composite operation to default
+    ctx.globalCompositeOperation = 'source-over';
   };
 
   const drawCanvas = useCallback(() => {
@@ -440,7 +493,8 @@ export default function App() {
       drawStroke(ctx, {
         color: partner.activeColor || '#3C3C3C',
         size: partner.activeSize || 5,
-        points: partner.currentPoints
+        points: partner.currentPoints,
+        isEraser: partner.activeTool === 'eraser'
       });
     }
 
@@ -449,10 +503,11 @@ export default function App() {
       drawStroke(ctx, {
         color: activeColor,
         size: activeSize,
-        points: currentStrokePoints.current
+        points: currentStrokePoints.current,
+        isEraser: activeTool === 'eraser'
       });
     }
-  }, [visibleStrokes, isPartnerOnline, partner, activeColor, activeSize]);
+  }, [visibleStrokes, isPartnerOnline, partner, activeColor, activeSize, activeTool]);
 
   // Redraw when strokes, partner status, or settings change
   useEffect(() => {
@@ -544,6 +599,7 @@ export default function App() {
         color: activeColor,
         size: activeSize,
         points: points,
+        isEraser: activeTool === 'eraser',
         timestamp: serverTimestamp()
       }).catch(err => console.error("Error saving stroke:", err));
     }
@@ -677,6 +733,85 @@ export default function App() {
     triggerHeartConfetti();
   };
 
+  // Admin authentication submit
+  const handleAdminAuth = (e) => {
+    e.preventDefault();
+    const correctPasscode = import.meta.env.VITE_ADMIN_PASSCODE || 'cozyadmin123';
+    if (adminPasscodeInput === correctPasscode) {
+      setAdminAuthenticated(true);
+      setAdminError('');
+      loadRoomsDirectly();
+    } else {
+      setAdminError('Invalid passcode. Access denied.');
+    }
+  };
+
+  // Helper to load rooms
+  const loadRoomsDirectly = async () => {
+    if (!db) return;
+    setAdminLoading(true);
+    try {
+      const roomsColl = collection(db, 'rooms');
+      const snapshot = await getDocs(roomsColl);
+      const list = [];
+      snapshot.forEach(docSnap => {
+        list.push({ id: docSnap.id, ...docSnap.data() });
+      });
+      // Sort by createdAt desc
+      list.sort((a, b) => {
+        const timeA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
+        const timeB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
+        return timeB - timeA;
+      });
+      setAdminRoomsList(list);
+    } catch (err) {
+      console.error("Failed to load rooms:", err);
+      setAdminError('Failed to fetch rooms. Check Firestore security rules.');
+    } finally {
+      setAdminLoading(false);
+    }
+  };
+
+  const loadAdminRooms = () => {
+    loadRoomsDirectly();
+  };
+
+  // Deep deletion of a room and all its subcollections
+  const handleAdminDeleteRoom = async (roomCode) => {
+    if (!db || !window.confirm(`Are you sure you want to delete room "${roomCode}" and all its history?`)) return;
+    setAdminLoading(true);
+    try {
+      // 1. Delete strokes subcollection
+      const strokesColl = collection(db, 'rooms', roomCode, 'strokes');
+      const strokesSnapshot = await getDocs(strokesColl);
+      const strokeDeletes = strokesSnapshot.docs.map(d => deleteDoc(d.ref));
+      await Promise.all(strokeDeletes);
+
+      // 2. Delete messages subcollection
+      const messagesColl = collection(db, 'rooms', roomCode, 'messages');
+      const messagesSnapshot = await getDocs(messagesColl);
+      const messageDeletes = messagesSnapshot.docs.map(d => deleteDoc(d.ref));
+      await Promise.all(messageDeletes);
+
+      // 3. Delete presence subcollection
+      const presenceColl = collection(db, 'rooms', roomCode, 'presence');
+      const presenceSnapshot = await getDocs(presenceColl);
+      const presenceDeletes = presenceSnapshot.docs.map(d => deleteDoc(d.ref));
+      await Promise.all(presenceDeletes);
+
+      // 4. Delete root room document
+      const roomRef = doc(db, 'rooms', roomCode);
+      await deleteDoc(roomRef);
+
+      alert(`Room "${roomCode}" successfully deleted.`);
+      loadRoomsDirectly();
+    } catch (err) {
+      console.error("Failed to delete room:", err);
+      alert("Error deleting room: " + err.message);
+      setAdminLoading(false);
+    }
+  };
+
   // Bypassing view: 
   // Screen A: Setup Firebase if no config exists
   if (!firebaseConfig) {
@@ -727,6 +862,123 @@ export default function App() {
               <li>Enable <strong>Cloud Firestore</strong> and ensure database rules allow public access in testing mode (e.g. <code>allow read, write: if true;</code>).</li>
             </ol>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Screen: Admin Panel Login/Dashboard
+  if (isAdminMode) {
+    if (!adminAuthenticated) {
+      return (
+        <div className="min-h-screen bg-cream-grid flex flex-col items-center justify-center p-6">
+          <div className="w-full max-w-sm bg-white/70 backdrop-blur-md rounded-3xl p-8 shadow-xl border border-stone-200/50 flex flex-col items-center">
+            <div className="w-14 h-14 rounded-full bg-stone-100 flex items-center justify-center mb-6">
+              <Settings className="w-7 h-7 text-stone-600 animate-pulse" />
+            </div>
+            <h2 className="text-2xl font-extrabold text-stone-800 tracking-tight mb-2 text-center">Admin Panel</h2>
+            <p className="text-stone-500 text-sm mb-6 text-center">Enter admin passcode to manage CozyCanvas rooms.</p>
+            <form onSubmit={handleAdminAuth} className="w-full space-y-4">
+              <input 
+                type="password" 
+                value={adminPasscodeInput}
+                onChange={(e) => setAdminPasscodeInput(e.target.value)}
+                placeholder="Enter admin passcode"
+                className="w-full px-4 py-3 bg-stone-50 border border-stone-200/70 rounded-2xl text-center text-stone-700 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400/40 transition"
+              />
+              {adminError && <p className="text-xs text-rose-500 text-center font-semibold">{adminError}</p>}
+              <button 
+                type="submit"
+                className="w-full bg-stone-800 hover:bg-stone-700 transition duration-200 text-white font-semibold py-3 px-6 rounded-2xl shadow cursor-pointer text-sm"
+              >
+                Authenticate
+              </button>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="min-h-screen bg-cream-grid p-6 md:p-12 flex flex-col items-center">
+        <div className="w-full max-w-4xl bg-white/80 backdrop-blur-md rounded-3xl p-6 md:p-10 shadow-xl border border-stone-200/50">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-stone-200/70 pb-6 mb-6 gap-4">
+            <div>
+              <h1 className="text-3xl font-extrabold text-stone-800 tracking-tight">CozyCanvas Admin Dashboard</h1>
+              <p className="text-stone-500 text-sm mt-1">Manage, inspect, and clean up active collaborative rooms.</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <button 
+                onClick={loadAdminRooms}
+                className="py-2.5 px-4 bg-stone-100 hover:bg-stone-200 text-stone-700 font-semibold text-xs rounded-xl transition cursor-pointer"
+              >
+                Refresh List
+              </button>
+              <button 
+                onClick={() => {
+                  setIsAdminMode(false);
+                  setAdminAuthenticated(false);
+                  setAdminPasscodeInput('');
+                  // Clean URL query
+                  const params = new URLSearchParams(window.location.search);
+                  params.delete('admin');
+                  window.history.replaceState(null, '', params.toString() ? `?${params.toString()}` : window.location.pathname);
+                }}
+                className="py-2.5 px-4 bg-rose-50 hover:bg-rose-100 text-rose-600 font-semibold text-xs rounded-xl transition cursor-pointer"
+              >
+                Exit Dashboard
+              </button>
+            </div>
+          </div>
+
+          {adminLoading ? (
+            <div className="flex flex-col items-center justify-center py-12">
+              <div className="w-10 h-10 border-4 border-rose-300 border-t-rose-500 rounded-full animate-spin mb-4"></div>
+              <p className="text-stone-500 text-sm">Loading rooms...</p>
+            </div>
+          ) : adminRoomsList.length === 0 ? (
+            <div className="text-center py-12 text-stone-400 text-sm">
+              No active rooms found in database.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="border-b border-stone-200 text-left text-xs font-semibold text-stone-400 uppercase tracking-wider">
+                    <th className="py-3 px-4">Room Code</th>
+                    <th className="py-3 px-4">Created At</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-stone-100">
+                  {adminRoomsList.map((room) => (
+                    <tr key={room.id} className="hover:bg-stone-50/50 transition">
+                      <td className="py-4 px-4 font-mono text-sm text-stone-800 font-bold">{room.id}</td>
+                      <td className="py-4 px-4 text-xs text-stone-400 font-medium">
+                        {room.createdAt?.toDate ? room.createdAt.toDate().toLocaleString() : 'N/A'}
+                      </td>
+                      <td className="py-4 px-4 text-right flex justify-end gap-2">
+                        <a 
+                          href={`/?room=${room.id}`} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="py-1.5 px-3 bg-stone-100 hover:bg-stone-200 text-stone-700 font-semibold text-xs rounded-lg transition"
+                        >
+                          View Room
+                        </a>
+                        <button 
+                          onClick={() => handleAdminDeleteRoom(room.id)}
+                          className="py-1.5 px-3 bg-rose-50 hover:bg-rose-100 text-rose-600 font-semibold text-xs rounded-lg transition cursor-pointer"
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -799,6 +1051,41 @@ export default function App() {
               </button>
             </form>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Screen: Wait for presence to load to check room capacity
+  if (roomCode && !presenceLoaded) {
+    return (
+      <div className="min-h-screen bg-cream-grid flex flex-col items-center justify-center p-6">
+        <div className="w-full max-w-sm bg-white/70 backdrop-blur-md rounded-3xl p-8 shadow-xl border border-stone-200/50 flex flex-col items-center">
+          <div className="w-10 h-10 border-4 border-rose-300 border-t-rose-500 rounded-full animate-spin mb-4"></div>
+          <p className="text-stone-500 text-sm font-semibold animate-pulse">Connecting to room...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Screen: Room is Full
+  if (roomCode && isRoomFull) {
+    return (
+      <div className="min-h-screen bg-cream-grid flex flex-col items-center justify-center p-6">
+        <div className="w-full max-w-md bg-white/70 backdrop-blur-md rounded-3xl p-8 shadow-xl border border-stone-200/50 flex flex-col items-center text-center">
+          <div className="w-14 h-14 rounded-full bg-rose-50 flex items-center justify-center mb-6">
+            <HeartOff className="w-7 h-7 text-rose-400" />
+          </div>
+          <h2 className="text-2xl font-extrabold text-stone-800 tracking-tight mb-2">Room is Full</h2>
+          <p className="text-stone-500 text-sm mb-6">
+            Only 2 people can draw together in a room at the same time. This room already has its couple!
+          </p>
+          <button
+            onClick={() => setRoomCode('')}
+            className="w-full bg-stone-800 hover:bg-stone-700 transition duration-200 text-white font-semibold py-3 px-6 rounded-2xl shadow cursor-pointer text-sm"
+          >
+            Go Back
+          </button>
         </div>
       </div>
     );
@@ -991,17 +1278,46 @@ export default function App() {
                     {COLORS.map((col) => (
                       <button
                         key={col.hex}
+                        disabled={activeTool === 'eraser'}
                         onClick={() => setActiveColor(col.hex)}
-                        className="w-6 h-6 rounded-full cursor-pointer border border-white hover:scale-110 active:scale-95 transition shadow-sm relative flex items-center justify-center"
+                        className={`w-6 h-6 rounded-full border border-white hover:scale-110 active:scale-95 transition shadow-sm relative flex items-center justify-center ${
+                          activeTool === 'eraser' ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer'
+                        }`}
                         style={{ backgroundColor: col.hex }}
                         title={col.name}
                       >
-                        {activeColor === col.hex && (
+                        {activeColor === col.hex && activeTool !== 'eraser' && (
                           <Check className="w-3.5 h-3.5 text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)]" />
                         )}
                       </button>
                     ))}
                   </div>
+                </div>
+
+                {/* Tool Selector (Pen / Eraser) */}
+                <div className="flex items-center bg-white/40 border border-stone-300/40 p-0.5 rounded-xl shadow-inner gap-0.5">
+                  <button
+                    onClick={() => setActiveTool('pen')}
+                    className={`p-1.5 rounded-lg transition cursor-pointer ${
+                      activeTool === 'pen'
+                        ? 'bg-rose-400 text-white shadow-sm'
+                        : 'text-stone-500 hover:bg-white/40'
+                    }`}
+                    title="Pen tool"
+                  >
+                    <Brush className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setActiveTool('eraser')}
+                    className={`p-1.5 rounded-lg transition cursor-pointer ${
+                      activeTool === 'eraser'
+                        ? 'bg-rose-400 text-white shadow-sm'
+                        : 'text-stone-500 hover:bg-white/40'
+                    }`}
+                    title="Eraser tool"
+                  >
+                    <Eraser className="w-4 h-4" />
+                  </button>
                 </div>
 
                 {/* Brush Size Controls */}
