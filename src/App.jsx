@@ -874,7 +874,7 @@ export default function App() {
       </main>
 
       {/* 3. Cozy Bottom Toolbar */}
-      <footer className="w-full p-4 flex flex-col items-center z-20 bg-gradient-to-t from-[#fdfbf7] via-[#fdfbf7]/95 to-transparent pb-6">
+      <footer className="w-full p-4 flex flex-col items-center z-20 bg-gradient-to-t from-[#edd8cb] via-[#edd8cb]/95 to-transparent pb-6">
         
         {/* Core Control Panel (Nude Color Box) */}
         <div className="w-full max-w-lg bg-[#EADCD3]/95 backdrop-blur rounded-3xl px-6 py-4 shadow-xl border border-[#d0c0b6] flex flex-col gap-4">

@@ -18,13 +18,14 @@ body {
   color: #3c3c3c;
 }
 
-/* Custom background paper grid */
+/* Custom background paper grid with warm cozy gradient */
 .bg-cream-grid {
-  background-color: #fdfbf7;
   background-image: 
-    radial-gradient(#f1ebe2 1.5px, transparent 1.5px);
-  background-size: 24px 24px;
-  background-position: 0 0;
+    radial-gradient(#e4dacb 1.5px, transparent 1.5px),
+    linear-gradient(135deg, #f6ebe4 0%, #edd8cb 100%);
+  background-size: 24px 24px, 100% 100%;
+  background-position: 0 0, 0 0;
+  background-attachment: fixed;
 }
 
 /* Cozy custom scrollbar */
