@@ -583,6 +583,13 @@ export default function App() {
     }
   };
 
+  const handleInputBlur = () => {
+    // Reset window scroll to 0,0 on mobile after keyboard collapses
+    setTimeout(() => {
+      window.scrollTo(0, 0);
+    }, 100);
+  };
+
   // 7. Toolbar Operations
   const handleUndo = async () => {
     if (!db || !roomCode || !nickname) return;
@@ -1071,7 +1078,7 @@ export default function App() {
                 <span className="font-bold text-sm text-stone-700">Cozy Chat</span>
               </div>
               <button 
-                onClick={() => setShowChat(false)}
+                onClick={() => { setShowChat(false); window.scrollTo(0, 0); }}
                 className="p-1 hover:bg-[#EADCD3]/70 rounded-full text-stone-500 hover:text-stone-700 transition cursor-pointer"
                 title="Close chat"
               >
@@ -1127,6 +1134,7 @@ export default function App() {
                 type="text" 
                 value={messageInput}
                 onChange={(e) => setMessageInput(e.target.value)}
+                onBlur={handleInputBlur}
                 placeholder="Write a sweet message..."
                 maxLength={200}
                 className="flex-grow px-3 py-2 bg-white border border-stone-200 rounded-xl text-xs text-stone-700 placeholder-stone-400 focus:outline-none focus:ring-1 focus:ring-rose-300 transition"
