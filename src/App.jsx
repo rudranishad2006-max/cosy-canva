@@ -56,7 +56,9 @@ const COLORS = [
   { name: 'Sage Green', hex: '#8FA89B' },
   { name: 'Deep Navy', hex: '#2B3E50' },
   { name: 'Ochre Gold', hex: '#E09F67' },
-  { name: 'Warm Charcoal', hex: '#3C3C3C' }
+  { name: 'Warm Charcoal', hex: '#3C3C3C' },
+  { name: 'Lavender', hex: '#9B8EC4' },
+  { name: 'Snow White', hex: '#FFFFFF' }
 ];
 
 // Confetti triggers
@@ -142,6 +144,20 @@ const parseFirebaseConfig = (text) => {
   }
   return null;
 };
+
+// Floating ambient particles component
+const FloatingParticles = () => (
+  <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
+    <div className="particle w-2 h-2 bg-rose-400/20" style={{ top: '15%', left: '10%', animationDelay: '0s' }} />
+    <div className="particle w-3 h-3 bg-amber-400/15" style={{ top: '70%', left: '80%', animationDelay: '2s' }} />
+    <div className="particle-slow w-4 h-4 bg-rose-300/10" style={{ top: '40%', left: '60%', animationDelay: '4s' }} />
+    <div className="particle w-1.5 h-1.5 bg-amber-300/20" style={{ top: '85%', left: '25%', animationDelay: '1s' }} />
+    <div className="particle-slow w-5 h-5 bg-rose-400/[0.08]" style={{ top: '20%', left: '75%', animationDelay: '3s' }} />
+    <div className="particle w-2.5 h-2.5 bg-amber-400/[0.12]" style={{ top: '55%', left: '15%', animationDelay: '5s' }} />
+    <div className="particle-slow w-3 h-3 bg-rose-300/15" style={{ top: '90%', left: '50%', animationDelay: '6s' }} />
+    <div className="particle w-2 h-2 bg-amber-300/[0.18]" style={{ top: '10%', left: '45%', animationDelay: '7s' }} />
+  </div>
+);
 
 export default function App() {
   // 1. Firebase Config Management
@@ -829,50 +845,47 @@ export default function App() {
   // Screen A: Setup Firebase if no config exists
   if (!firebaseConfig) {
     return (
-      <div className="min-h-screen bg-cream-grid flex items-center justify-center p-6">
-        <div className="w-full max-w-lg bg-white/70 backdrop-blur-md rounded-3xl p-8 shadow-xl border border-stone-200/50 flex flex-col items-center">
-          <div className="w-16 h-16 rounded-full bg-rose-50 flex items-center justify-center mb-4">
-            <Heart className="w-8 h-8 text-rose-400 fill-rose-100" />
+      <div className="min-h-screen flex items-center justify-center p-6 relative overflow-hidden">
+        <FloatingParticles />
+        <div className="w-full max-w-lg glass-card-strong rounded-3xl p-8 flex flex-col items-center relative z-10 animate-fade-in">
+          <div className="w-16 h-16 rounded-full bg-gradient-to-br from-rose-400/20 to-amber-400/20 flex items-center justify-center mb-5">
+            <Heart className="w-8 h-8 text-rose-400 fill-rose-400/30 animate-heart-glow" />
           </div>
-          <h1 className="text-3xl font-bold text-stone-800 text-center mb-2">Welcome to CozyCanvas</h1>
-          <p className="text-stone-500 text-center text-sm mb-6">
-            A real-time drawing board for you and your partner. To begin, connect a Firebase Firestore database. It takes just 2 minutes!
+          <h1 className="text-3xl font-bold gradient-text text-center mb-2 font-display">Welcome to CozyCanvas</h1>
+          <p className="text-white/40 text-center text-sm mb-6">
+            A real-time drawing board for you and your partner. Connect a Firebase Firestore database to begin.
           </p>
-
           <form onSubmit={handleSaveConfig} className="w-full space-y-4">
-            <div className="space-y-1">
-              <label className="block text-xs font-semibold uppercase tracking-wider text-stone-500">Firebase Config SDK Object</label>
-              <textarea 
+            <div className="space-y-1.5">
+              <label className="block text-[10px] font-semibold uppercase tracking-widest text-white/30">Firebase Config SDK Object</label>
+              <textarea
                 rows={7}
                 value={configInput}
                 onChange={(e) => setConfigInput(e.target.value)}
                 placeholder={`const firebaseConfig = {\n  apiKey: "AIzaSy...",\n  authDomain: "...",\n  projectId: "...",\n  ...\n};`}
-                className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-2xl text-xs font-mono focus:outline-none focus:ring-2 focus:ring-rose-400/40 text-stone-700"
+                className="w-full px-4 py-3 glass-input rounded-2xl text-xs font-mono transition"
               />
             </div>
-            
             {configError && (
-              <p className="text-xs text-rose-500 bg-rose-50 px-4 py-2.5 rounded-xl border border-rose-100">
+              <p className="text-xs text-rose-400 bg-rose-400/10 px-4 py-2.5 rounded-xl border border-rose-400/20">
                 {configError}
               </p>
             )}
-
-            <button 
+            <button
               type="submit"
-              className="w-full bg-stone-800 hover:bg-stone-700 transition duration-200 text-white font-semibold py-3 px-6 rounded-2xl shadow-md flex items-center justify-center gap-2 group cursor-pointer"
+              className="w-full btn-gradient py-3.5 px-6 rounded-2xl flex items-center justify-center gap-2 group cursor-pointer text-sm"
             >
               <span>Connect Database</span>
               <ChevronRight className="w-4 h-4 group-hover:translate-x-0.5 transition" />
             </button>
           </form>
-
-          <div className="mt-8 pt-6 border-t border-stone-100 w-full text-xs text-stone-400 space-y-2">
-            <p className="font-semibold text-stone-500">Steps to configure:</p>
+          <div className="mt-8 pt-6 border-t border-white/5 w-full text-xs text-white/25 space-y-2">
+            <p className="font-semibold text-white/35">Steps to configure:</p>
             <ol className="list-decimal pl-4 space-y-1">
-              <li>Open the <a href="https://console.firebase.google.com" target="_blank" rel="noreferrer" className="text-rose-400 underline hover:text-rose-500">Firebase Console</a>.</li>
+              <li>Open the <a href="https://console.firebase.google.com" target="_blank" rel="noreferrer" className="text-rose-400/80 underline hover:text-rose-400">Firebase Console</a>.</li>
               <li>Create a new project.</li>
               <li>Add a Web App under Project Settings to generate the Config code snippet.</li>
-              <li>Enable <strong>Cloud Firestore</strong> and ensure database rules allow public access in testing mode (e.g. <code>allow read, write: if true;</code>).</li>
+              <li>Enable <strong className="text-white/40">Cloud Firestore</strong> and set rules to allow read/write in testing mode.</li>
             </ol>
           </div>
         </div>
@@ -884,25 +897,26 @@ export default function App() {
   if (isAdminMode) {
     if (!adminAuthenticated) {
       return (
-        <div className="min-h-screen bg-cream-grid flex flex-col items-center justify-center p-6">
-          <div className="w-full max-w-sm bg-white/70 backdrop-blur-md rounded-3xl p-8 shadow-xl border border-stone-200/50 flex flex-col items-center">
-            <div className="w-14 h-14 rounded-full bg-stone-100 flex items-center justify-center mb-6">
-              <Settings className="w-7 h-7 text-stone-600 animate-pulse" />
+        <div className="min-h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden">
+          <FloatingParticles />
+          <div className="w-full max-w-sm glass-card-strong rounded-3xl p-8 flex flex-col items-center relative z-10 animate-fade-in">
+            <div className="w-14 h-14 rounded-full bg-white/5 flex items-center justify-center mb-6">
+              <Settings className="w-7 h-7 text-white/40 animate-pulse" />
             </div>
-            <h2 className="text-2xl font-extrabold text-stone-800 tracking-tight mb-2 text-center">Admin Panel</h2>
-            <p className="text-stone-500 text-sm mb-6 text-center">Enter admin passcode to manage CozyCanvas rooms.</p>
+            <h2 className="text-2xl font-extrabold text-white/90 tracking-tight mb-2 text-center font-display">Admin Panel</h2>
+            <p className="text-white/35 text-sm mb-6 text-center">Enter admin passcode to manage CozyCanvas rooms.</p>
             <form onSubmit={handleAdminAuth} className="w-full space-y-4">
-              <input 
-                type="password" 
+              <input
+                type="password"
                 value={adminPasscodeInput}
                 onChange={(e) => setAdminPasscodeInput(e.target.value)}
                 placeholder="Enter admin passcode"
-                className="w-full px-4 py-3 bg-stone-50 border border-stone-200/70 rounded-2xl text-center text-stone-700 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400/40 transition"
+                className="w-full px-4 py-3 glass-input rounded-2xl text-center text-sm transition"
               />
-              {adminError && <p className="text-xs text-rose-500 text-center font-semibold">{adminError}</p>}
-              <button 
+              {adminError && <p className="text-xs text-rose-400 text-center font-semibold">{adminError}</p>}
+              <button
                 type="submit"
-                className="w-full bg-stone-800 hover:bg-stone-700 transition duration-200 text-white font-semibold py-3 px-6 rounded-2xl shadow cursor-pointer text-sm"
+                className="w-full btn-gradient py-3 px-6 rounded-2xl cursor-pointer text-sm"
               >
                 Authenticate
               </button>
@@ -913,31 +927,31 @@ export default function App() {
     }
 
     return (
-      <div className="min-h-screen bg-cream-grid p-6 md:p-12 flex flex-col items-center">
-        <div className="w-full max-w-4xl bg-white/80 backdrop-blur-md rounded-3xl p-6 md:p-10 shadow-xl border border-stone-200/50">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-stone-200/70 pb-6 mb-6 gap-4">
+      <div className="min-h-screen p-6 md:p-12 flex flex-col items-center relative overflow-hidden">
+        <FloatingParticles />
+        <div className="w-full max-w-4xl glass-card-strong rounded-3xl p-6 md:p-10 relative z-10">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-white/5 pb-6 mb-6 gap-4">
             <div>
-              <h1 className="text-3xl font-extrabold text-stone-800 tracking-tight">CozyCanvas Admin Dashboard</h1>
-              <p className="text-stone-500 text-sm mt-1">Manage, inspect, and clean up active collaborative rooms.</p>
+              <h1 className="text-3xl font-extrabold gradient-text tracking-tight font-display">Admin Dashboard</h1>
+              <p className="text-white/35 text-sm mt-1">Manage, inspect, and clean up active collaborative rooms.</p>
             </div>
             <div className="flex items-center gap-3">
-              <button 
+              <button
                 onClick={loadAdminRooms}
-                className="py-2.5 px-4 bg-stone-100 hover:bg-stone-200 text-stone-700 font-semibold text-xs rounded-xl transition cursor-pointer"
+                className="py-2.5 px-4 bg-white/5 hover:bg-white/10 text-white/60 font-semibold text-xs rounded-xl transition cursor-pointer border border-white/5"
               >
                 Refresh List
               </button>
-              <button 
+              <button
                 onClick={() => {
                   setIsAdminMode(false);
                   setAdminAuthenticated(false);
                   setAdminPasscodeInput('');
-                  // Clean URL query
                   const params = new URLSearchParams(window.location.search);
                   params.delete('admin');
                   window.history.replaceState(null, '', params.toString() ? `?${params.toString()}` : window.location.pathname);
                 }}
-                className="py-2.5 px-4 bg-rose-50 hover:bg-rose-100 text-rose-600 font-semibold text-xs rounded-xl transition cursor-pointer"
+                className="py-2.5 px-4 bg-rose-400/10 hover:bg-rose-400/20 text-rose-400 font-semibold text-xs rounded-xl transition cursor-pointer border border-rose-400/10"
               >
                 Exit Dashboard
               </button>
@@ -946,42 +960,42 @@ export default function App() {
 
           {adminLoading ? (
             <div className="flex flex-col items-center justify-center py-12">
-              <div className="w-10 h-10 border-4 border-rose-300 border-t-rose-500 rounded-full animate-spin mb-4"></div>
-              <p className="text-stone-500 text-sm">Loading rooms...</p>
+              <div className="w-10 h-10 border-4 border-rose-400/30 border-t-rose-400 rounded-full animate-spin mb-4"></div>
+              <p className="text-white/35 text-sm">Loading rooms...</p>
             </div>
           ) : adminRoomsList.length === 0 ? (
-            <div className="text-center py-12 text-stone-400 text-sm">
+            <div className="text-center py-12 text-white/25 text-sm">
               No active rooms found in database.
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full border-collapse">
                 <thead>
-                  <tr className="border-b border-stone-200 text-left text-xs font-semibold text-stone-400 uppercase tracking-wider">
+                  <tr className="border-b border-white/5 text-left text-xs font-semibold text-white/25 uppercase tracking-wider">
                     <th className="py-3 px-4">Room Code</th>
                     <th className="py-3 px-4">Created At</th>
                     <th className="py-3 px-4 text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-stone-100">
+                <tbody className="divide-y divide-white/5">
                   {adminRoomsList.map((room) => (
-                    <tr key={room.id} className="hover:bg-stone-50/50 transition">
-                      <td className="py-4 px-4 font-mono text-sm text-stone-800 font-bold">{room.id}</td>
-                      <td className="py-4 px-4 text-xs text-stone-400 font-medium">
+                    <tr key={room.id} className="hover:bg-white/5 transition">
+                      <td className="py-4 px-4 font-mono text-sm text-white/80 font-bold">{room.id}</td>
+                      <td className="py-4 px-4 text-xs text-white/30 font-medium">
                         {room.createdAt?.toDate ? room.createdAt.toDate().toLocaleString() : 'N/A'}
                       </td>
                       <td className="py-4 px-4 text-right flex justify-end gap-2">
-                        <a 
-                          href={`/?room=${room.id}`} 
-                          target="_blank" 
+                        <a
+                          href={`/?room=${room.id}`}
+                          target="_blank"
                           rel="noopener noreferrer"
-                          className="py-1.5 px-3 bg-stone-100 hover:bg-stone-200 text-stone-700 font-semibold text-xs rounded-lg transition"
+                          className="py-1.5 px-3 bg-white/5 hover:bg-white/10 text-white/60 font-semibold text-xs rounded-lg transition"
                         >
                           View Room
                         </a>
-                        <button 
+                        <button
                           onClick={() => handleAdminDeleteRoom(room.id)}
-                          className="py-1.5 px-3 bg-rose-50 hover:bg-rose-100 text-rose-600 font-semibold text-xs rounded-lg transition cursor-pointer"
+                          className="py-1.5 px-3 bg-rose-400/10 hover:bg-rose-400/20 text-rose-400 font-semibold text-xs rounded-lg transition cursor-pointer"
                         >
                           Delete
                         </button>
@@ -997,25 +1011,27 @@ export default function App() {
     );
   }
 
-  // Screen B: If DB configured but no room joined yet
+  // Screen B: If DB configured but no room joined yet — Lobby
   if (!roomCode) {
     return (
-      <div className="min-h-screen bg-cream-grid flex flex-col items-center justify-center p-6 relative">
-        <button 
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden">
+        <FloatingParticles />
+
+        <button
           onClick={() => setShowSettings(!showSettings)}
-          className="absolute top-6 right-6 p-3 bg-white/60 hover:bg-white/80 transition rounded-full border border-stone-200/40 shadow-sm cursor-pointer"
+          className="absolute top-6 right-6 p-3 bg-white/5 hover:bg-white/10 transition rounded-full border border-white/5 cursor-pointer z-20"
           title="Database Settings"
         >
-          <Settings className="w-5 h-5 text-stone-600" />
+          <Settings className="w-5 h-5 text-white/40" />
         </button>
 
         {showSettings && (
-          <div className="absolute top-20 right-6 z-50 w-64 bg-white/90 backdrop-blur rounded-2xl p-4 shadow-xl border border-stone-200/50">
-            <h3 className="text-sm font-bold text-stone-700 mb-2">Database Connected</h3>
-            <p className="text-xs text-stone-400 mb-4 font-mono truncate">{firebaseConfig.projectId}</p>
-            <button 
+          <div className="absolute top-20 right-6 z-50 w-64 glass-card-strong rounded-2xl p-4 animate-fade-in">
+            <h3 className="text-sm font-bold text-white/70 mb-2">Database Connected</h3>
+            <p className="text-xs text-white/30 mb-4 font-mono truncate">{firebaseConfig.projectId}</p>
+            <button
               onClick={handleResetConfig}
-              className="w-full py-2 px-4 bg-rose-50 hover:bg-rose-100 text-rose-600 font-semibold text-xs rounded-xl flex items-center justify-center gap-1.5 transition cursor-pointer"
+              className="w-full py-2 px-4 bg-rose-400/10 hover:bg-rose-400/20 text-rose-400 font-semibold text-xs rounded-xl flex items-center justify-center gap-1.5 transition cursor-pointer border border-rose-400/10"
             >
               <LogOut className="w-3.5 h-3.5" />
               Disconnect Database
@@ -1023,44 +1039,46 @@ export default function App() {
           </div>
         )}
 
-        <div className="w-full max-w-md bg-white/60 backdrop-blur-md rounded-3xl p-8 shadow-xl border border-stone-200/40 flex flex-col items-center">
-          <div className="w-14 h-14 rounded-full bg-rose-50 flex items-center justify-center mb-6">
-            <Heart className="w-7 h-7 text-rose-400 fill-rose-100 animate-pulse" />
+        <div className="w-full max-w-md glass-card-strong rounded-3xl p-10 flex flex-col items-center relative z-10 animate-fade-in">
+          {/* Glowing Heart Logo */}
+          <div className="w-20 h-20 rounded-full bg-gradient-to-br from-rose-400/20 to-amber-400/20 flex items-center justify-center mb-6 relative">
+            <Heart className="w-10 h-10 text-rose-400 fill-rose-400/30 animate-heart-glow" />
+            <div className="absolute inset-0 rounded-full bg-gradient-to-br from-rose-400/10 to-transparent blur-xl" />
           </div>
 
-          <h1 className="text-3xl font-extrabold text-stone-800 text-center tracking-tight mb-2">CozyCanvas</h1>
-          <p className="text-stone-500 text-center text-sm mb-8">
-            Create a shared canvas to doodle, express love, and share moments together in real-time.
+          <h1 className="text-4xl font-extrabold gradient-text text-center tracking-tight mb-2 font-display">CozyCanvas</h1>
+          <p className="text-white/35 text-center text-sm mb-10">
+            Draw together, stay together. Create a shared canvas to express your love in real-time.
           </p>
 
           <div className="w-full space-y-6">
-            <button 
+            <button
               onClick={handleCreateRoom}
-              className="w-full bg-rose-400 hover:bg-rose-500 transition duration-200 text-white font-semibold py-3.5 px-6 rounded-2xl shadow-md shadow-rose-100 flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full btn-gradient py-4 px-6 rounded-2xl flex items-center justify-center gap-2.5 cursor-pointer text-[15px]"
             >
-              <Sparkles className="w-4 h-4 fill-white/20" />
-              Start a new canvas
+              <Sparkles className="w-5 h-5" />
+              Create New Canvas
             </button>
 
             <div className="relative flex py-2 items-center">
-              <div className="flex-grow border-t border-stone-200/70"></div>
-              <span className="flex-shrink mx-4 text-xs font-semibold text-stone-400 tracking-widest uppercase">Or Join Existing</span>
-              <div className="flex-grow border-t border-stone-200/70"></div>
+              <div className="flex-grow border-t border-white/5"></div>
+              <span className="flex-shrink mx-4 text-[10px] font-semibold text-white/20 tracking-widest uppercase">Or Join Existing</span>
+              <div className="flex-grow border-t border-white/5"></div>
             </div>
 
             <form onSubmit={handleJoinRoom} className="space-y-3">
-              <input 
-                type="text" 
+              <input
+                type="text"
                 value={roomInput}
                 onChange={(e) => setRoomInput(e.target.value)}
                 placeholder="Enter room code (e.g. warm-meadow-42)"
-                className="w-full px-4 py-3 bg-stone-50 border border-stone-200/70 rounded-2xl text-center text-stone-700 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400/40 transition"
+                className="w-full px-4 py-3.5 glass-input rounded-2xl text-center text-sm transition"
               />
-              <button 
+              <button
                 type="submit"
-                className="w-full bg-stone-800 hover:bg-stone-700 transition duration-200 text-white font-semibold py-3 px-6 rounded-2xl shadow"
+                className="w-full bg-white/5 hover:bg-white/10 transition py-3 px-6 rounded-2xl text-white/70 font-semibold border border-white/10 text-sm cursor-pointer"
               >
-                Join room
+                Join Room
               </button>
             </form>
           </div>
@@ -1072,10 +1090,11 @@ export default function App() {
   // Screen: Wait for presence to load to check room capacity
   if (roomCode && !presenceLoaded) {
     return (
-      <div className="min-h-screen bg-cream-grid flex flex-col items-center justify-center p-6">
-        <div className="w-full max-w-sm bg-white/70 backdrop-blur-md rounded-3xl p-8 shadow-xl border border-stone-200/50 flex flex-col items-center">
-          <div className="w-10 h-10 border-4 border-rose-300 border-t-rose-500 rounded-full animate-spin mb-4"></div>
-          <p className="text-stone-500 text-sm font-semibold animate-pulse">Connecting to room...</p>
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden">
+        <FloatingParticles />
+        <div className="w-full max-w-sm glass-card-strong rounded-3xl p-8 flex flex-col items-center relative z-10 animate-fade-in">
+          <div className="w-10 h-10 border-4 border-rose-400/30 border-t-rose-400 rounded-full animate-spin mb-4"></div>
+          <p className="text-white/40 text-sm font-semibold animate-pulse">Connecting to room...</p>
         </div>
       </div>
     );
@@ -1084,18 +1103,19 @@ export default function App() {
   // Screen: Room is Full
   if (roomCode && isRoomFull) {
     return (
-      <div className="min-h-screen bg-cream-grid flex flex-col items-center justify-center p-6">
-        <div className="w-full max-w-md bg-white/70 backdrop-blur-md rounded-3xl p-8 shadow-xl border border-stone-200/50 flex flex-col items-center text-center">
-          <div className="w-14 h-14 rounded-full bg-rose-50 flex items-center justify-center mb-6">
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden">
+        <FloatingParticles />
+        <div className="w-full max-w-md glass-card-strong rounded-3xl p-8 flex flex-col items-center text-center relative z-10 animate-fade-in">
+          <div className="w-14 h-14 rounded-full bg-rose-400/10 flex items-center justify-center mb-6">
             <HeartOff className="w-7 h-7 text-rose-400" />
           </div>
-          <h2 className="text-2xl font-extrabold text-stone-800 tracking-tight mb-2">Room is Full</h2>
-          <p className="text-stone-500 text-sm mb-6">
+          <h2 className="text-2xl font-extrabold text-white/90 tracking-tight mb-2 font-display">Room is Full</h2>
+          <p className="text-white/35 text-sm mb-6">
             Only 2 people can draw together in a room at the same time. This room already has its couple!
           </p>
           <button
             onClick={() => setRoomCode('')}
-            className="w-full bg-stone-800 hover:bg-stone-700 transition duration-200 text-white font-semibold py-3 px-6 rounded-2xl shadow cursor-pointer text-sm"
+            className="w-full btn-gradient py-3 px-6 rounded-2xl cursor-pointer text-sm"
           >
             Go Back
           </button>
@@ -1107,33 +1127,34 @@ export default function App() {
   // Screen C: Room joined but Nickname Onboarding is required
   if (!nickname) {
     return (
-      <div className="min-h-screen bg-cream-grid flex items-center justify-center p-6">
-        <div className="w-full max-w-sm bg-white/70 backdrop-blur-md rounded-3xl p-8 shadow-xl border border-stone-200/50 flex flex-col items-center">
-          <h2 className="text-xl font-bold text-stone-800 text-center mb-2">Joining Room</h2>
-          <span className="px-3 py-1 bg-amber-50 border border-amber-100 text-amber-700 rounded-full text-xs font-semibold font-mono tracking-tight mb-6">
+      <div className="min-h-screen flex items-center justify-center p-6 relative overflow-hidden">
+        <FloatingParticles />
+        <div className="w-full max-w-sm glass-card-strong rounded-3xl p-8 flex flex-col items-center relative z-10 animate-fade-in">
+          <h2 className="text-xl font-bold text-white/90 text-center mb-2 font-display">Joining Room</h2>
+          <span className="px-3 py-1 bg-amber-400/10 border border-amber-400/20 text-amber-400/80 rounded-full text-xs font-semibold font-mono tracking-tight mb-6">
             {roomCode}
           </span>
 
           <form onSubmit={handleNicknameSubmit} className="w-full space-y-4">
-            <div className="space-y-1">
-              <label className="block text-xs font-semibold uppercase tracking-wider text-stone-500 text-center">What should your partner call you?</label>
-              <input 
-                type="text" 
+            <div className="space-y-1.5">
+              <label className="block text-[10px] font-semibold uppercase tracking-widest text-white/25 text-center">What should your partner call you?</label>
+              <input
+                type="text"
                 maxLength={16}
                 value={nicknameInput}
                 onChange={(e) => setNicknameInput(e.target.value)}
                 placeholder="Your cute nickname..."
-                className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-2xl text-center text-stone-700 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400/40 transition"
+                className="w-full px-4 py-3 glass-input rounded-2xl text-center text-sm transition"
                 required
               />
             </div>
-            
-            <button 
+
+            <button
               type="submit"
-              className="w-full bg-rose-400 hover:bg-rose-500 transition duration-200 text-white font-semibold py-3 px-6 rounded-2xl shadow-md flex items-center justify-center gap-2"
+              className="w-full btn-gradient py-3 px-6 rounded-2xl flex items-center justify-center gap-2 text-sm cursor-pointer"
             >
               <span>Enter Canvas</span>
-              <Heart className="w-4 h-4 fill-white/20" />
+              <Heart className="w-4 h-4" />
             </button>
           </form>
         </div>
@@ -1143,90 +1164,89 @@ export default function App() {
 
   // Screen D: Cozy Collaborative Drawing Canvas Screen
   return (
-    <div className="min-h-screen bg-cream-grid flex flex-col relative">
-      
+    <div className="min-h-screen flex flex-col relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 50%, #16213e 100%)' }}>
+
+      {/* Ambient Background Particles */}
+      <FloatingParticles />
+
       {/* 1. Header Area */}
-      <header className="flex justify-between items-center px-6 py-4 bg-white/30 backdrop-blur-sm border-b border-stone-200/30 z-20">
+      <header className="flex justify-between items-center px-5 py-3 glass-card border-0 border-b border-white/5 z-20 relative">
         {/* Left Side: Logo & Room details */}
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-full bg-rose-50 flex items-center justify-center">
-            <Heart className="w-4.5 h-4.5 text-rose-400 fill-rose-100" />
+          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-rose-400/25 to-amber-400/25 flex items-center justify-center">
+            <Heart className="w-4 h-4 text-rose-400 fill-rose-400/40" />
           </div>
           <div>
             <div className="flex items-center gap-1.5">
-              <h2 className="text-md font-bold text-stone-800 tracking-tight">CozyCanvas</h2>
-              <span className="px-2.5 py-0.5 bg-amber-50 border border-amber-100/70 text-amber-700 rounded-full text-[10px] font-semibold font-mono tracking-tighter">
+              <h2 className="text-sm font-bold gradient-text tracking-tight font-display">CozyCanvas</h2>
+              <span className="px-2 py-0.5 bg-amber-400/10 border border-amber-400/15 text-amber-400/70 rounded-full text-[9px] font-semibold font-mono tracking-tighter">
                 {roomCode}
               </span>
             </div>
-            <p className="text-[10px] text-stone-400 leading-none mt-0.5">Logged in as {nickname}</p>
+            <p className="text-[10px] text-white/25 leading-none mt-0.5">Drawing as <span className="text-white/40 font-medium">{nickname}</span></p>
           </div>
         </div>
 
-        {/* Right Side: Partner Presence indicator & Action */}
-        <div className="flex items-center gap-3">
+        {/* Right Side: Partner Presence indicator & Actions */}
+        <div className="flex items-center gap-2.5">
           {/* Presence Indicator */}
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-white/60 rounded-full border border-stone-200/40 shadow-sm text-xs">
-            <span className="text-stone-500 font-medium">Partner:</span>
+          <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-white/[0.03] rounded-full border border-white/[0.06] text-xs">
+            <span className="text-white/30 font-medium text-[11px]">Partner:</span>
             {partner ? (
               <div className="flex items-center gap-1.5">
-                <span className="font-semibold text-stone-700">{partner.name}</span>
-                <span 
+                <span className="font-semibold text-white/70 text-[11px]">{partner.name}</span>
+                <span
                   className={`w-2 h-2 rounded-full ${
-                    isPartnerOnline ? 'bg-emerald-400 animate-soft-pulse' : 'bg-stone-300'
-                  }`} 
+                    isPartnerOnline ? 'bg-emerald-400 animate-soft-pulse' : 'bg-white/20'
+                  }`}
+                  style={isPartnerOnline ? { boxShadow: '0 0 8px rgba(52,211,153,0.5)' } : {}}
                 />
-                <span className="text-[10px] text-stone-400 font-medium">
-                  ({isPartnerOnline ? 'online' : 'away'})
-                </span>
               </div>
             ) : (
-              <span className="text-stone-400 font-medium italic">Waiting for partner...</span>
+              <span className="text-white/20 font-medium italic text-[11px]">Waiting...</span>
             )}
           </div>
 
           {/* Chat Panel Toggle */}
-          <button 
+          <button
             onClick={() => setShowChat(!showChat)}
             className={`p-2 relative transition rounded-full border cursor-pointer ${
-              showChat 
-                ? 'bg-rose-50 border-rose-100 text-rose-500' 
-                : 'bg-white/60 hover:bg-white/85 border-stone-200/40 text-stone-600 shadow-sm'
+              showChat
+                ? 'bg-rose-400/15 border-rose-400/20 text-rose-400'
+                : 'bg-white/[0.04] hover:bg-white/[0.08] border-white/[0.06] text-white/40'
             }`}
             title="Chat with partner"
           >
-            <MessageSquare className="w-4.5 h-4.5" />
+            <MessageSquare className="w-4 h-4" />
             {unreadCount > 0 && (
-              <span className="absolute -top-1 -right-1 bg-rose-500 text-white font-bold text-[9px] w-4 h-4 rounded-full flex items-center justify-center border border-white">
+              <span className="absolute -top-1 -right-1 bg-rose-500 text-white font-bold text-[9px] w-4 h-4 rounded-full flex items-center justify-center" style={{ boxShadow: '0 0 8px rgba(244,63,94,0.5)' }}>
                 {unreadCount}
               </span>
             )}
           </button>
 
           {/* Quick Exit Room */}
-          <button 
+          <button
             onClick={() => setRoomCode('')}
-            className="p-2 text-stone-400 hover:text-rose-500 hover:bg-rose-50 transition rounded-full border border-transparent cursor-pointer"
+            className="p-2 text-white/25 hover:text-rose-400 hover:bg-rose-400/10 transition rounded-full border border-transparent cursor-pointer"
             title="Leave room"
           >
-            <LogOut className="w-4.5 h-4.5" />
+            <LogOut className="w-4 h-4" />
           </button>
         </div>
       </header>
 
-      {/* Main Workspace Wrapper (Left: Canvas/Toolbar, Right: Chat Sidebar) */}
+      {/* Main Workspace Wrapper */}
       <div className="flex-grow flex flex-row overflow-hidden relative w-full min-h-0">
-        
+
         {/* Left Section: Canvas and Bottom Toolbar */}
         <div className="flex-grow flex flex-col justify-between items-center relative overflow-hidden h-full w-full min-h-0">
-          
-          {/* 2. Main Work Area (Canvas Polaroid Frame) */}
-          <main className="flex-grow flex items-center justify-center p-4 relative z-10 w-full">
-            
-            {/* Polaroid Center Frame */}
-            <div className="w-full max-w-[min(90vw,58vh)] bg-white rounded-3xl pt-4 px-4 pb-10 md:pt-6 md:px-6 md:pb-14 shadow-2xl border border-stone-200/40 flex flex-col gap-2.5 relative select-none">
-              
-              <div className="w-full aspect-square rounded-2xl overflow-hidden relative border-4 border-rose-300/90 bg-cream-grid shadow-[0_0_18px_rgba(244,63,94,0.18),inset_0_2px_8px_rgba(0,0,0,0.06)]">
+
+          {/* 2. Main Canvas Area */}
+          <main className="flex-grow flex items-center justify-center p-3 md:p-5 relative z-10 w-full">
+            {/* Canvas Container — Full Bleed, No Polaroid */}
+            <div className="w-full max-w-[min(92vw,62vh)] relative">
+              <div className="w-full aspect-square rounded-2xl overflow-hidden relative bg-white border border-white/10" style={{ boxShadow: '0 0 60px rgba(232,168,124,0.08), 0 8px 32px rgba(0,0,0,0.4)' }}>
                 {/* Canvas */}
                 <canvas
                   ref={canvasRef}
@@ -1236,12 +1256,12 @@ export default function App() {
                   onPointerMove={handlePointerMove}
                   onPointerUp={handlePointerUp}
                   onPointerLeave={handlePointerUp}
-                  className={`w-full h-full bg-transparent touch-none ${isDrawing ? 'canvas-drawing' : ''}`}
+                  className={`w-full h-full bg-white touch-none ${isDrawing ? 'canvas-drawing' : ''}`}
                 />
 
                 {/* Partner's Cursor Position Overlay */}
                 {isPartnerOnline && partner.x !== null && partner.y !== null && (
-                  <div 
+                  <div
                     className="absolute pointer-events-none transition-all duration-75 ease-out select-none z-10"
                     style={{
                       left: `${(partner.x / 1500) * 100}%`,
@@ -1249,58 +1269,49 @@ export default function App() {
                       transform: 'translate(-50%, -50%)'
                     }}
                   >
-                    {/* Pointer brush size dot */}
-                    <div 
-                      className="w-3.5 h-3.5 rounded-full border-2 border-white shadow-md animate-soft-pulse"
-                      style={{ backgroundColor: partner.activeColor || '#C85C50' }}
+                    {/* Pointer brush circle with glow */}
+                    <div
+                      className="w-4 h-4 rounded-full border-2 border-white animate-soft-pulse"
+                      style={{ backgroundColor: partner.activeColor || '#C85C50', boxShadow: `0 0 12px ${partner.activeColor || '#C85C50'}60` }}
                     />
-                    {/* Text Indicator */}
-                    <div className="ml-4 mt-2 px-2.5 py-0.5 bg-white/95 text-stone-700 text-[10px] rounded-full shadow-lg border border-stone-200/50 font-bold whitespace-nowrap flex items-center gap-1">
+                    {/* Name label */}
+                    <div className="ml-4 mt-1.5 px-2 py-0.5 bg-gray-900/80 text-white text-[9px] rounded-full backdrop-blur-sm font-semibold whitespace-nowrap flex items-center gap-1 border border-white/10" style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }}>
                       <span>{partner.name}</span>
-                      {partner.isDrawing && <Brush className="w-2.5 h-2.5 text-stone-500 fill-stone-50" />}
+                      {partner.isDrawing && <Brush className="w-2.5 h-2.5 text-rose-300" />}
                     </div>
                   </div>
                 )}
               </div>
-
-              {/* Polaroid Caption - Cute Emojis instead of names */}
-              <div className="flex items-center justify-center text-xl md:text-2xl select-none tracking-widest pt-1 gap-1.5">
-                <span>🧸</span>
-                <span>🌸</span>
-                <span>✨</span>
-                <Heart className="w-5 h-5 text-rose-400 fill-rose-300 animate-pulse" />
-                <span>✨</span>
-                <span>🌸</span>
-                <span>🧸</span>
-              </div>
             </div>
           </main>
 
-          {/* 3. Cozy Bottom Toolbar */}
-          <footer className="w-full p-4 flex flex-col items-center z-20 bg-gradient-to-t from-[#edd8cb] via-[#edd8cb]/95 to-transparent pb-6">
-            
-            {/* Core Control Panel (Nude Color Box) */}
-            <div className="w-full max-w-lg bg-[#EADCD3]/95 backdrop-blur rounded-3xl px-6 py-4 shadow-xl border border-[#d0c0b6] flex flex-col gap-4">
-              
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                
-                {/* Color Palette Presets */}
-                <div className="flex items-center gap-2.5">
-                  <Palette className="w-4 h-4 text-stone-400" />
-                  <div className="flex items-center gap-2">
+          {/* 3. Floating Bottom Toolbar */}
+          <footer className="w-full p-4 flex flex-col items-center z-20 pb-5">
+            <div className="w-full max-w-xl glass-card rounded-[20px] px-5 py-3.5 flex flex-col gap-3">
+
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                {/* Color Palette */}
+                <div className="flex items-center gap-2">
+                  <Palette className="w-3.5 h-3.5 text-white/20" />
+                  <div className="flex items-center gap-1.5">
                     {COLORS.map((col) => (
                       <button
                         key={col.hex}
                         disabled={activeTool === 'eraser'}
                         onClick={() => setActiveColor(col.hex)}
-                        className={`w-6 h-6 rounded-full border border-white hover:scale-110 active:scale-95 transition shadow-sm relative flex items-center justify-center ${
-                          activeTool === 'eraser' ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer'
+                        className={`w-6 h-6 rounded-full transition-all duration-200 relative flex items-center justify-center ${
+                          activeTool === 'eraser' ? 'opacity-20 cursor-not-allowed' : 'cursor-pointer hover:scale-125 active:scale-95'
                         }`}
-                        style={{ backgroundColor: col.hex }}
+                        style={{
+                          backgroundColor: col.hex,
+                          boxShadow: activeColor === col.hex && activeTool !== 'eraser'
+                            ? `0 0 0 2px #0f0f1a, 0 0 0 4px ${col.hex}, 0 0 14px ${col.hex}50`
+                            : 'none'
+                        }}
                         title={col.name}
                       >
                         {activeColor === col.hex && activeTool !== 'eraser' && (
-                          <Check className="w-3.5 h-3.5 text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)]" />
+                          <Check className="w-3 h-3 text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" />
                         )}
                       </button>
                     ))}
@@ -1308,25 +1319,27 @@ export default function App() {
                 </div>
 
                 {/* Tool Selector (Pen / Eraser) */}
-                <div className="flex items-center bg-white/40 border border-stone-300/40 p-0.5 rounded-xl shadow-inner gap-0.5">
+                <div className="flex items-center bg-white/5 border border-white/[0.08] p-0.5 rounded-xl gap-0.5">
                   <button
                     onClick={() => setActiveTool('pen')}
-                    className={`p-1.5 rounded-lg transition cursor-pointer ${
+                    className={`p-1.5 rounded-lg transition-all duration-200 cursor-pointer ${
                       activeTool === 'pen'
-                        ? 'bg-rose-400 text-white shadow-sm'
-                        : 'text-stone-500 hover:bg-white/40'
+                        ? 'bg-gradient-to-r from-rose-400 to-amber-400 text-white shadow-lg'
+                        : 'text-white/30 hover:text-white/50 hover:bg-white/5'
                     }`}
+                    style={activeTool === 'pen' ? { boxShadow: '0 4px 12px rgba(232,168,124,0.3)' } : {}}
                     title="Pen tool"
                   >
                     <Brush className="w-4 h-4" />
                   </button>
                   <button
                     onClick={() => setActiveTool('eraser')}
-                    className={`p-1.5 rounded-lg transition cursor-pointer ${
+                    className={`p-1.5 rounded-lg transition-all duration-200 cursor-pointer ${
                       activeTool === 'eraser'
-                        ? 'bg-rose-400 text-white shadow-sm'
-                        : 'text-stone-500 hover:bg-white/40'
+                        ? 'bg-gradient-to-r from-rose-400 to-amber-400 text-white shadow-lg'
+                        : 'text-white/30 hover:text-white/50 hover:bg-white/5'
                     }`}
+                    style={activeTool === 'eraser' ? { boxShadow: '0 4px 12px rgba(232,168,124,0.3)' } : {}}
                     title="Eraser tool"
                   >
                     <Eraser className="w-4 h-4" />
@@ -1334,62 +1347,56 @@ export default function App() {
                 </div>
 
                 {/* Brush Size Controls */}
-                <div className="flex items-center gap-3 flex-grow max-w-[160px] md:max-w-xs">
-                  <Brush className="w-4 h-4 text-stone-400" />
-                  <input 
+                <div className="flex items-center gap-2.5 flex-grow max-w-[140px] md:max-w-[180px]">
+                  <Brush className="w-3.5 h-3.5 text-white/20" />
+                  <input
                     type="range"
                     min="2"
                     max="30"
                     value={activeSize}
                     onChange={(e) => setActiveSize(parseInt(e.target.value))}
-                    className="w-full accent-rose-400 cursor-pointer h-1.5 bg-transparent appearance-none"
+                    className="w-full cursor-pointer h-1"
                   />
-                  <span className="text-[11px] font-bold text-stone-500 w-5 text-right">{activeSize}px</span>
+                  <span className="text-[10px] font-bold text-white/30 w-6 text-right">{activeSize}px</span>
                 </div>
-
               </div>
 
-              <div className="h-px bg-[#d0c0b6]/60" />
+              <div className="h-px bg-white/5" />
 
               {/* Action Buttons */}
               <div className="flex items-center justify-between">
-                
-                {/* Undo Last Stroke */}
                 <button
                   onClick={handleUndo}
-                  className="px-4 py-2 hover:bg-stone-50 text-stone-600 rounded-2xl border border-stone-200/50 flex items-center gap-1.5 text-xs font-semibold transition cursor-pointer"
+                  className="px-3.5 py-1.5 hover:bg-white/5 text-white/35 hover:text-white/60 rounded-xl border border-white/5 flex items-center gap-1.5 text-xs font-semibold transition cursor-pointer"
                   title="Undo last stroke"
                 >
-                  <Undo2 className="w-4 h-4" />
+                  <Undo2 className="w-3.5 h-3.5" />
                   <span>Undo</span>
                 </button>
 
                 <div className="flex items-center gap-2">
-                  {/* Copy Share Link */}
                   <button
                     onClick={handleShareLink}
-                    className={`px-4 py-2 rounded-2xl flex items-center gap-1.5 text-xs font-semibold transition cursor-pointer ${
-                      copiedLink 
-                        ? 'bg-emerald-50 text-emerald-600 border border-emerald-200/60' 
-                        : 'bg-white hover:bg-stone-50 text-stone-600 border border-stone-200/50'
+                    className={`px-3.5 py-1.5 rounded-xl flex items-center gap-1.5 text-xs font-semibold transition cursor-pointer ${
+                      copiedLink
+                        ? 'bg-emerald-400/10 text-emerald-400 border border-emerald-400/20'
+                        : 'bg-white/5 hover:bg-white/[0.08] text-white/35 hover:text-white/60 border border-white/5'
                     }`}
                     title="Copy room link"
                   >
-                    {copiedLink ? <Check className="w-4 h-4" /> : <Share2 className="w-4 h-4" />}
-                    <span>{copiedLink ? 'Copied!' : 'Share Link'}</span>
+                    {copiedLink ? <Check className="w-3.5 h-3.5" /> : <Share2 className="w-3.5 h-3.5" />}
+                    <span>{copiedLink ? 'Copied!' : 'Share'}</span>
                   </button>
 
-                  {/* Clear Canvas */}
                   <button
                     onClick={() => setShowClearConfirm(true)}
-                    className="px-4 py-2 hover:bg-rose-50 text-rose-500 hover:text-rose-600 rounded-2xl border border-rose-200/30 flex items-center gap-1.5 text-xs font-semibold transition cursor-pointer"
+                    className="px-3.5 py-1.5 hover:bg-rose-400/10 text-rose-400/40 hover:text-rose-400 rounded-xl border border-rose-400/10 flex items-center gap-1.5 text-xs font-semibold transition cursor-pointer"
                     title="Clear canvas"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Trash2 className="w-3.5 h-3.5" />
                     <span>Clear</span>
                   </button>
                 </div>
-
               </div>
 
             </div>
@@ -1398,17 +1405,17 @@ export default function App() {
 
         {/* Right Section: Collapsible Chat Sidebar */}
         {showChat && (
-          <div className="fixed z-30 flex flex-col transition-all duration-300 shadow-2xl bg-[#F5EBE6]/95 backdrop-blur border border-[#d0c0b6] min-h-0 w-full h-full inset-0 sm:w-80 sm:h-auto sm:inset-auto sm:top-24 sm:bottom-6 sm:right-6 rounded-none sm:rounded-3xl">
-            
+          <div className="fixed z-30 flex flex-col shadow-2xl glass-card-strong min-h-0 w-full h-full inset-0 sm:w-80 sm:h-auto sm:inset-auto sm:top-[68px] sm:bottom-5 sm:right-5 rounded-none sm:rounded-2xl animate-slide-in-right overflow-hidden">
+
             {/* Chat Header */}
-            <div className="px-4 py-3 border-b border-[#d8c7bd] flex justify-between items-center bg-[#EADCD3]/40">
+            <div className="px-4 py-3 border-b border-white/5 flex justify-between items-center bg-white/[0.03]">
               <div className="flex items-center gap-1.5">
-                <MessageSquare className="w-4 h-4 text-stone-500" />
-                <span className="font-bold text-sm text-stone-700">Cozy Chat</span>
+                <MessageSquare className="w-4 h-4 text-white/30" />
+                <span className="font-bold text-sm text-white/70 font-display">Cozy Chat</span>
               </div>
-              <button 
+              <button
                 onClick={() => { setShowChat(false); window.scrollTo(0, 0); }}
-                className="p-1 hover:bg-[#EADCD3]/70 rounded-full text-stone-500 hover:text-stone-700 transition cursor-pointer"
+                className="p-1 hover:bg-white/[0.08] rounded-full text-white/30 hover:text-white/60 transition cursor-pointer"
                 title="Close chat"
               >
                 <X className="w-4 h-4" />
@@ -1418,36 +1425,36 @@ export default function App() {
             {/* Message History */}
             <div className="flex-grow h-0 min-h-0 overflow-y-auto p-4 space-y-3 flex flex-col" id="cozy-chat-messages">
               {messages.length === 0 ? (
-                <div className="flex-grow flex flex-col items-center justify-center text-center p-6 text-stone-400">
-                  <div className="w-10 h-10 rounded-full bg-stone-50/55 flex items-center justify-center mb-2">
-                    <Heart className="w-5 h-5 text-rose-300/60" />
+                <div className="flex-grow flex flex-col items-center justify-center text-center p-6 text-white/25">
+                  <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center mb-2">
+                    <Heart className="w-5 h-5 text-rose-400/40" />
                   </div>
                   <p className="text-xs font-semibold">No messages yet...</p>
-                  <p className="text-[10px] text-stone-400/80 mt-0.5">Send a sweet note to your partner!</p>
+                  <p className="text-[10px] text-white/15 mt-0.5">Send a sweet note to your partner!</p>
                 </div>
               ) : (
                 messages.map((msg) => {
                   const isMe = msg.sender === nickname;
                   return (
-                    <div 
-                      key={msg.id} 
+                    <div
+                      key={msg.id}
                       className={`flex flex-col max-w-[75%] ${
                         isMe ? 'self-end items-end' : 'self-start items-start'
                       }`}
                     >
                       {/* Message Bubble */}
-                      <div 
-                        className={`px-3 py-2 rounded-2xl text-xs leading-relaxed shadow-sm ${
-                          isMe 
-                            ? 'bg-[#C85C50] text-white rounded-br-none' 
-                            : 'bg-white text-stone-700 rounded-bl-none border border-stone-200/50'
+                      <div
+                        className={`px-3.5 py-2 rounded-2xl text-xs leading-relaxed ${
+                          isMe
+                            ? 'bg-gradient-to-r from-rose-500/90 to-amber-500/90 text-white rounded-br-sm'
+                            : 'bg-white/[0.08] text-white/70 rounded-bl-sm border border-white/5'
                         }`}
                       >
                         {msg.text}
                       </div>
-                      
+
                       {/* Timestamp */}
-                      <span className="text-[9px] text-stone-400 mt-1 px-1">
+                      <span className="text-[9px] text-white/20 mt-1 px-1">
                         {isMe ? 'You' : msg.sender} • {msg.timestamp ? new Date(msg.timestamp.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Sending...'}
                       </span>
                     </div>
@@ -1458,20 +1465,20 @@ export default function App() {
             </div>
 
             {/* Message Input Form */}
-            <form onSubmit={handleSendMessage} className="p-3 border-t border-[#d8c7bd] bg-[#EADCD3]/30 flex gap-2">
-              <input 
-                type="text" 
+            <form onSubmit={handleSendMessage} className="p-3 border-t border-white/5 bg-white/[0.03] flex gap-2">
+              <input
+                type="text"
                 value={messageInput}
                 onChange={(e) => setMessageInput(e.target.value)}
                 onBlur={handleInputBlur}
                 placeholder="Write a sweet message..."
                 maxLength={200}
-                className="flex-grow px-3 py-2 bg-white border border-stone-200 rounded-xl text-xs text-stone-700 placeholder-stone-400 focus:outline-none focus:ring-1 focus:ring-rose-300 transition"
+                className="flex-grow px-3 py-2 glass-input rounded-xl text-xs transition"
               />
-              <button 
+              <button
                 type="submit"
                 disabled={!messageInput.trim()}
-                className="p-2 bg-[#C85C50] hover:bg-[#b04d42] disabled:bg-stone-300 text-white rounded-xl transition cursor-pointer flex items-center justify-center shrink-0"
+                className="p-2 btn-gradient disabled:opacity-20 disabled:shadow-none rounded-xl transition cursor-pointer flex items-center justify-center shrink-0"
               >
                 <Send className="w-3.5 h-3.5" />
               </button>
@@ -1482,25 +1489,25 @@ export default function App() {
 
       {/* 4. Clear Canvas Confirmation Overlay */}
       {showClearConfirm && (
-        <div className="fixed inset-0 bg-stone-900/40 backdrop-blur-sm flex items-center justify-center p-6 z-50">
-          <div className="w-full max-w-sm bg-white rounded-3xl p-6 shadow-2xl border border-stone-100 flex flex-col items-center">
-            <div className="w-12 h-12 rounded-full bg-rose-50 flex items-center justify-center mb-4">
-              <Trash2 className="w-6 h-6 text-rose-500" />
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-6 z-50">
+          <div className="w-full max-w-sm glass-card-strong rounded-3xl p-6 flex flex-col items-center animate-fade-in">
+            <div className="w-12 h-12 rounded-full bg-rose-400/10 flex items-center justify-center mb-4">
+              <Trash2 className="w-6 h-6 text-rose-400" />
             </div>
-            <h3 className="text-lg font-bold text-stone-800 text-center mb-2">Wipe canvas?</h3>
-            <p className="text-stone-500 text-sm text-center mb-6 leading-relaxed">
+            <h3 className="text-lg font-bold text-white/90 text-center mb-2 font-display">Wipe canvas?</h3>
+            <p className="text-white/35 text-sm text-center mb-6 leading-relaxed">
               This will erase all drawings for both you and your partner. Are you sure you want to start fresh?
             </p>
             <div className="flex gap-3 w-full">
-              <button 
+              <button
                 onClick={() => setShowClearConfirm(false)}
-                className="flex-1 py-3 bg-stone-50 hover:bg-stone-100 transition rounded-xl text-stone-600 text-sm font-semibold cursor-pointer"
+                className="flex-1 py-3 bg-white/5 hover:bg-white/10 transition rounded-xl text-white/50 text-sm font-semibold cursor-pointer border border-white/5"
               >
                 Cancel
               </button>
-              <button 
+              <button
                 onClick={handleClear}
-                className="flex-1 py-3 bg-rose-400 hover:bg-rose-500 transition text-white rounded-xl text-sm font-semibold cursor-pointer"
+                className="flex-1 py-3 btn-gradient rounded-xl text-sm cursor-pointer"
               >
                 Yes, clear all
               </button>
