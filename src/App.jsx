@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { 
   Sparkles, 
   Undo2, 
+  Redo2,
   Trash2, 
   Copy, 
   Plus, 
@@ -18,9 +19,14 @@ import {
   MessageSquare,
   Send,
   X,
-  Eraser 
+  Eraser,
+  Download,
+  Smile,
+  ChevronDown,
+  Keyboard
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import EmojiPicker from 'emoji-picker-react';
 
 // Firebase imports
 import { initializeApp, getApps } from 'firebase/app';
@@ -34,13 +40,29 @@ import {
   deleteDoc, 
   query, 
   orderBy, 
-  getDocs,
+  getDoc,
   serverTimestamp 
 } from 'firebase/firestore';
 
 // Cozy Room Code Wordlists
 const ADJECTIVES = ['warm', 'cozy', 'gentle', 'soft', 'golden', 'misty', 'starry', 'dusky', 'amber', 'rosy', 'dreamy', 'silent', 'peaceful', 'sweet', 'blushing', 'velvet', 'tender', 'floral'];
 const NOUNS = ['meadow', 'forest', 'river', 'glade', 'haven', 'cove', 'peak', 'garden', 'cottage', 'path', 'hearth', 'cloud', 'breeze', 'willow', 'nest', 'bower', 'valley', 'grove'];
+
+const QUICK_REACTIONS = ['❤️', '😂', '👍', '✨'];
+
+const DAILY_PROMPTS = [
+  "Draw something that made you smile today",
+  "Sketch your favorite childhood toy",
+  "Draw a cozy little cabin in the woods",
+  "Illustrate your dream breakfast",
+  "Draw a tiny creature with a big personality",
+  "Sketch a houseplant you wish you had",
+  "Draw something that smells like autumn",
+  "Illustrate a magical potion bottle",
+  "Draw your perfect reading nook",
+  "Sketch a friendly ghost doing chores",
+  "Draw an animal wearing a tiny hat"
+];
 
 const generateRoomCode = () => {
   const adj = ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)];
@@ -60,6 +82,17 @@ const COLORS = [
   { name: 'Lavender', hex: '#9B8EC4' },
   { name: 'Snow White', hex: '#FFFFFF' }
 ];
+
+// Chat Label Colors
+const CHAT_COLORS = ['#34D399', '#60A5FA', '#A78BFA', '#F472B6', '#FBBF24', '#F87171'];
+const getUserColor = (name) => {
+  if (!name) return CHAT_COLORS[0];
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return CHAT_COLORS[Math.abs(hash) % CHAT_COLORS.length];
+};
 
 // Confetti triggers
 const triggerJoinConfetti = () => {
@@ -208,6 +241,8 @@ export default function App() {
   }, [firebaseConfig]);
 
   // 2. Room & Onboarding State
+  const [selectedMode, setSelectedMode] = useState(null); // 'couple' | 'group'
+  const [roomMaxParticipants, setRoomMaxParticipants] = useState(2);
   const [roomCode, setRoomCode] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get('room') || '';
@@ -228,7 +263,9 @@ export default function App() {
   const canvasRef = useRef(null);
   const [activeColor, setActiveColor] = useState(COLORS[0].hex);
   const [activeSize, setActiveSize] = useState(5);
+  const [activeEraserSize, setActiveEraserSize] = useState(15);
   const [isDrawing, setIsDrawing] = useState(false);
+  const cursorRef = useRef(null);
   const currentStrokePoints = useRef([]);
 
   // 4. Collaborative Sync States
@@ -239,14 +276,37 @@ export default function App() {
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [activeTool, setActiveTool] = useState('pen'); // 'pen' | 'eraser'
+  const [redoStack, setRedoStack] = useState([]);
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
 
   // 4.1 Chat States
   const [messages, setMessages] = useState([]);
   const [messageInput, setMessageInput] = useState('');
   const [showChat, setShowChat] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [activeReactionMsgId, setActiveReactionMsgId] = useState(null);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [streakCount, setStreakCount] = useState(0);
+  const [showSavedIndicator, setShowSavedIndicator] = useState(false);
+  const [hidePrompt, setHidePrompt] = useState(() => {
+    const hiddenDate = localStorage.getItem('cozy_canvas_prompt_hidden_date');
+    const today = new Date().toISOString().split('T')[0];
+    return hiddenDate === today;
+  });
   const messagesEndRef = useRef(null);
   const messagesLoadedRef = useRef(false);
+  const typingTimeoutRef = useRef(null);
+
+  // Handle escape key to close emoji picker
+  useEffect(() => {
+    const handleEsc = (e) => {
+      if (e.key === 'Escape' && showEmojiPicker) {
+        setShowEmojiPicker(false);
+      }
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [showEmojiPicker]);
 
   // 4.2 Admin Panel States
   const [isAdminMode, setIsAdminMode] = useState(() => {
@@ -280,18 +340,65 @@ export default function App() {
   }, [roomCode]);
 
   // Reset presenceLoaded, presenceList, and messagesLoaded states when leaving the room
+  const assignedColorRef = useRef(false);
   useEffect(() => {
     if (!roomCode) {
       setPresenceLoaded(false);
       setPresenceList([]);
       messagesLoadedRef.current = false;
+      assignedColorRef.current = false;
     }
   }, [roomCode]);
+
+  // Auto-Color Assignment
+  useEffect(() => {
+    if (presenceLoaded && !assignedColorRef.current) {
+      const usedColors = presenceList.map(p => p.activeColor);
+      const availableColors = COLORS.filter(c => !usedColors.includes(c.hex));
+      if (availableColors.length > 0) {
+        setActiveColor(availableColors[0].hex);
+      } else {
+        setActiveColor(COLORS[Math.floor(Math.random() * COLORS.length)].hex);
+      }
+      assignedColorRef.current = true;
+    }
+  }, [presenceLoaded, presenceList]);
 
   // DB Sync 1: Listen to Room clearedAt
   useEffect(() => {
     if (!db || !roomCode) return;
     const roomRef = doc(db, 'rooms', roomCode);
+
+    const checkStreak = async () => {
+      try {
+        const snap = await getDoc(roomRef);
+        if (snap.exists()) {
+          const data = snap.data();
+          const today = new Date().toISOString().split('T')[0];
+          const lastActiveDate = data.lastActiveDate || '';
+          let currentStreak = data.streakCount || 0;
+          
+          if (lastActiveDate !== today) {
+            const yesterday = new Date();
+            yesterday.setDate(yesterday.getDate() - 1);
+            const yesterdayStr = yesterday.toISOString().split('T')[0];
+            
+            if (lastActiveDate === yesterdayStr) {
+              currentStreak += 1;
+            } else {
+              currentStreak = 1;
+            }
+            
+            await updateDoc(roomRef, {
+              lastActiveDate: today,
+              streakCount: currentStreak
+            });
+          }
+        }
+      } catch (e) {}
+    };
+    checkStreak();
+
     const unsubscribe = onSnapshot(roomRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
@@ -300,9 +407,22 @@ export default function App() {
         } else {
           setClearedAtTime(0);
         }
+        if (data.maxParticipants) {
+          setRoomMaxParticipants(data.maxParticipants);
+        } else {
+          setRoomMaxParticipants(2);
+        }
+        if (data.streakCount) {
+          setStreakCount(data.streakCount);
+        }
       } else {
         // Init room doc
-        setDoc(roomRef, { createdAt: serverTimestamp() }).catch(() => {});
+        setDoc(roomRef, { 
+          createdAt: serverTimestamp(), 
+          maxParticipants: 2,
+          lastActiveDate: new Date().toISOString().split('T')[0],
+          streakCount: 1 
+        }).catch(() => {});
       }
     });
     return () => unsubscribe();
@@ -365,6 +485,14 @@ export default function App() {
     });
   }, [strokes, clearedAtTime]);
 
+  useEffect(() => {
+    if (visibleStrokes.length > 0) {
+      setShowSavedIndicator(true);
+      const timer = setTimeout(() => setShowSavedIndicator(false), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [visibleStrokes]);
+
   const activePresences = useMemo(() => {
     return presenceList.filter(p => Date.now() - p.lastActive < 15000);
   }, [presenceList]);
@@ -373,7 +501,7 @@ export default function App() {
   const isPartnerOnline = !!partner;
 
   const activeOthersCount = activePresences.length;
-  const isRoomFull = activeOthersCount >= 2;
+  const isRoomFull = activeOthersCount >= roomMaxParticipants;
 
   // DB Sync 4: Presence & Heartbeat Listeners
   useEffect(() => {
@@ -392,10 +520,11 @@ export default function App() {
           isDrawing: drawing,
           activeColor,
           activeSize,
+          activeEraserSize,
           activeTool,
           currentPoints: points,
           lastActive: Date.now()
-        });
+        }, { merge: true });
       } catch (e) {}
     };
 
@@ -414,7 +543,7 @@ export default function App() {
       clearInterval(interval);
       deleteDoc(presenceRef).catch(() => {});
     };
-  }, [db, roomCode, nickname, userId, activeColor, activeSize, presenceLoaded, isRoomFull, activeTool]);
+  }, [db, roomCode, nickname, userId, activeColor, activeSize, activeEraserSize, presenceLoaded, isRoomFull, activeTool]);
 
   // DB Sync 5: Listen to Partner Presence
   useEffect(() => {
@@ -474,18 +603,29 @@ export default function App() {
     // Support transparent erasing
     if (stroke.isEraser) {
       ctx.globalCompositeOperation = 'destination-out';
+      ctx.strokeStyle = 'rgba(0,0,0,1)';
     } else {
       ctx.globalCompositeOperation = 'source-over';
+      ctx.strokeStyle = stroke.color;
     }
 
-    ctx.strokeStyle = stroke.color;
     ctx.lineWidth = stroke.size;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
-    ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
-    for (let i = 1; i < stroke.points.length; i++) {
-      ctx.lineTo(stroke.points[i].x, stroke.points[i].y);
+    if (stroke.points.length < 3) {
+      ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
+      for (let i = 1; i < stroke.points.length; i++) {
+        ctx.lineTo(stroke.points[i].x, stroke.points[i].y);
+      }
+    } else {
+      ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
+      for (let i = 1; i < stroke.points.length - 1; i++) {
+        const xc = (stroke.points[i].x + stroke.points[i + 1].x) / 2;
+        const yc = (stroke.points[i].y + stroke.points[i + 1].y) / 2;
+        ctx.quadraticCurveTo(stroke.points[i].x, stroke.points[i].y, xc, yc);
+      }
+      ctx.lineTo(stroke.points[stroke.points.length - 1].x, stroke.points[stroke.points.length - 1].y);
     }
     ctx.stroke();
 
@@ -504,26 +644,28 @@ export default function App() {
       drawStroke(ctx, stroke);
     });
 
-    // Draw partner active stroke (in progress)
-    if (isPartnerOnline && partner.isDrawing && partner.currentPoints && partner.currentPoints.length > 1) {
-      drawStroke(ctx, {
-        color: partner.activeColor || '#3C3C3C',
-        size: partner.activeSize || 5,
-        points: partner.currentPoints,
-        isEraser: partner.activeTool === 'eraser'
-      });
-    }
+    // Draw all active strokes (in progress)
+    activePresences.forEach(p => {
+      if (p.isDrawing && p.currentPoints && p.currentPoints.length > 1) {
+        drawStroke(ctx, {
+          color: p.activeColor || '#C85C50',
+          size: p.activeTool === 'eraser' ? (p.activeEraserSize || 15) : (p.activeSize || 5),
+          points: p.currentPoints,
+          isEraser: p.activeTool === 'eraser'
+        });
+      }
+    });
 
     // Draw local active stroke (in progress)
     if (currentStrokePoints.current.length > 1) {
       drawStroke(ctx, {
         color: activeColor,
-        size: activeSize,
+        size: activeTool === 'eraser' ? activeEraserSize : activeSize,
         points: currentStrokePoints.current,
         isEraser: activeTool === 'eraser'
       });
     }
-  }, [visibleStrokes, isPartnerOnline, partner, activeColor, activeSize, activeTool]);
+  }, [visibleStrokes, isPartnerOnline, partner, activeColor, activeSize, activeEraserSize, activeTool]);
 
   // Redraw when strokes, partner status, or settings change
   useEffect(() => {
@@ -553,6 +695,11 @@ export default function App() {
 
     setIsDrawing(true);
     currentStrokePoints.current = [{ x, y }];
+    if (cursorRef.current) {
+      cursorRef.current.style.opacity = '1';
+      cursorRef.current.style.left = `${(x / 1500) * 100}%`;
+      cursorRef.current.style.top = `${(y / 1500) * 100}%`;
+    }
 
     // Trigger instant canvas refresh for starting dot
     const ctx = canvas.getContext('2d');
@@ -564,7 +711,7 @@ export default function App() {
       ctx.globalCompositeOperation = 'source-over';
       ctx.fillStyle = activeColor;
     }
-    ctx.arc(x, y, activeSize / 2, 0, Math.PI * 2);
+    ctx.arc(x, y, (activeTool === 'eraser' ? activeEraserSize : activeSize) / 2, 0, Math.PI * 2);
     ctx.fill();
     ctx.globalCompositeOperation = 'source-over'; // Reset
 
@@ -580,9 +727,14 @@ export default function App() {
     const scaleY = 1500 / rect.height;
     const x = (e.clientX - rect.left) * scaleX;
     const y = (e.clientY - rect.top) * scaleY;
+    
+    if (cursorRef.current) {
+      cursorRef.current.style.opacity = '1';
+      cursorRef.current.style.left = `${(x / 1500) * 100}%`;
+      cursorRef.current.style.top = `${(y / 1500) * 100}%`;
+    }
 
     if (isDrawing) {
-      const lastPoint = currentStrokePoints.current[currentStrokePoints.current.length - 1];
       const newPoint = { x, y };
       currentStrokePoints.current.push(newPoint);
 
@@ -591,15 +743,30 @@ export default function App() {
       ctx.beginPath();
       if (activeTool === 'eraser') {
         ctx.globalCompositeOperation = 'destination-out';
+        ctx.strokeStyle = 'rgba(0,0,0,1)';
       } else {
         ctx.globalCompositeOperation = 'source-over';
+        ctx.strokeStyle = activeColor;
       }
-      ctx.strokeStyle = activeColor;
-      ctx.lineWidth = activeSize;
+      ctx.lineWidth = activeTool === 'eraser' ? activeEraserSize : activeSize;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
-      ctx.moveTo(lastPoint.x, lastPoint.y);
-      ctx.lineTo(newPoint.x, newPoint.y);
+
+      const pts = currentStrokePoints.current;
+      if (pts.length >= 3) {
+        const p0 = pts[pts.length - 3];
+        const p1 = pts[pts.length - 2];
+        const p2 = pts[pts.length - 1];
+        const mid1 = { x: (p0.x + p1.x) / 2, y: (p0.y + p1.y) / 2 };
+        const mid2 = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+        ctx.moveTo(mid1.x, mid1.y);
+        ctx.quadraticCurveTo(p1.x, p1.y, mid2.x, mid2.y);
+      } else if (pts.length === 2) {
+        ctx.moveTo(pts[0].x, pts[0].y);
+        const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+        ctx.lineTo(mid.x, mid.y);
+      }
+      
       ctx.stroke();
       ctx.globalCompositeOperation = 'source-over'; // Reset
 
@@ -618,6 +785,9 @@ export default function App() {
     currentStrokePoints.current = [];
 
     if (points.length > 1) {
+      // Clear redoStack on new stroke
+      setRedoStack([]);
+      
       const strokeId = `stroke-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       const strokeRef = doc(db, 'rooms', roomCode, 'strokes', strokeId);
       
@@ -626,7 +796,7 @@ export default function App() {
         id: strokeId,
         author: nickname,
         color: activeColor,
-        size: activeSize,
+        size: activeTool === 'eraser' ? activeEraserSize : activeSize,
         points: points,
         isEraser: activeTool === 'eraser',
         timestamp: serverTimestamp()
@@ -643,7 +813,32 @@ export default function App() {
     if (canvas) {
       canvas.releasePointerCapture(e.pointerId);
     }
+    if (e.pointerType === 'touch' && cursorRef.current) {
+      cursorRef.current.style.opacity = '0';
+    }
     endDrawing();
+  };
+
+  const handlePointerLeave = (e) => {
+    if (cursorRef.current) {
+      cursorRef.current.style.opacity = '0';
+    }
+    handlePointerUp(e);
+  };
+
+  const handleMessageInputChange = (e) => {
+    setMessageInput(e.target.value);
+    
+    if (!db || !roomCode || !userId) return;
+    const presenceRef = doc(db, 'rooms', roomCode, 'presence', userId);
+    
+    updateDoc(presenceRef, { isChatTyping: true, lastActive: Date.now() }).catch(() => {});
+    
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    
+    typingTimeoutRef.current = setTimeout(() => {
+      updateDoc(presenceRef, { isChatTyping: false }).catch(() => {});
+    }, 2000);
   };
 
   const handleSendMessage = async (e) => {
@@ -652,6 +847,11 @@ export default function App() {
 
     const messageText = messageInput.trim();
     setMessageInput('');
+    setShowEmojiPicker(false);
+
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    const presenceRef = doc(db, 'rooms', roomCode, 'presence', userId);
+    updateDoc(presenceRef, { isChatTyping: false }).catch(() => {});
 
     const msgId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const msgRef = doc(db, 'rooms', roomCode, 'messages', msgId);
@@ -661,11 +861,38 @@ export default function App() {
         id: msgId,
         text: messageText,
         sender: nickname,
-        timestamp: serverTimestamp()
+        timestamp: serverTimestamp(),
+        reactions: {}
       });
     } catch (err) {
       console.error("Error sending message:", err);
     }
+  };
+
+  const handleReaction = async (msgId, emoji) => {
+    if (!db || !roomCode || !nickname) return;
+    const msgRef = doc(db, 'rooms', roomCode, 'messages', msgId);
+    const msg = messages.find(m => m.id === msgId);
+    if (!msg) return;
+    
+    const currentReactions = msg.reactions || {};
+    const usersForEmoji = currentReactions[emoji] || [];
+    
+    let newUsers;
+    if (usersForEmoji.includes(nickname)) {
+      newUsers = usersForEmoji.filter(u => u !== nickname);
+    } else {
+      newUsers = [...usersForEmoji, nickname];
+    }
+    
+    try {
+      await updateDoc(msgRef, {
+        [`reactions.${emoji}`]: newUsers
+      });
+    } catch (err) {
+      console.error("Reaction failed", err);
+    }
+    setActiveReactionMsgId(null);
   };
 
   const handleInputBlur = () => {
@@ -685,25 +912,69 @@ export default function App() {
       const lastStroke = myStrokes[myStrokes.length - 1];
       try {
         await deleteDoc(doc(db, 'rooms', roomCode, 'strokes', lastStroke.id));
+        setRedoStack(prev => [...prev, lastStroke]);
       } catch (e) {
         console.error("Undo failed:", e);
       }
     }
   };
 
+  const handleRedo = async () => {
+    if (!db || !roomCode || redoStack.length === 0) return;
+    
+    const strokeToRestore = redoStack[redoStack.length - 1];
+    try {
+      const strokeRef = doc(db, 'rooms', roomCode, 'strokes', strokeToRestore.id);
+      await setDoc(strokeRef, strokeToRestore);
+      setRedoStack(prev => prev.slice(0, -1));
+    } catch (e) {
+      console.error("Redo failed:", e);
+    }
+  };
+
   const handleClear = async () => {
     if (!db || !roomCode) return;
     try {
-      const roomRef = doc(db, 'rooms', roomCode);
-      await setDoc(roomRef, {
+      await updateDoc(doc(db, 'rooms', roomCode), {
         clearedAt: serverTimestamp()
-      }, { merge: true });
+      });
       setShowClearConfirm(false);
+      setRedoStack([]);
       triggerHeartConfetti();
     } catch (e) {
       console.error("Clear failed:", e);
     }
   };
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') {
+        return;
+      }
+      
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        if (e.shiftKey) {
+          handleRedo();
+        } else {
+          handleUndo();
+        }
+        e.preventDefault();
+      }
+      
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+        handleRedo();
+        e.preventDefault();
+      }
+      
+      if (!e.ctrlKey && !e.metaKey) {
+        if (e.key.toLowerCase() === 'b') setActiveTool('pen');
+        if (e.key.toLowerCase() === 'e') setActiveTool('eraser');
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  });
 
   const handleShareLink = () => {
     const shareUrl = `${window.location.origin}${window.location.pathname}?room=${roomCode}`;
@@ -712,6 +983,30 @@ export default function App() {
       triggerJoinConfetti();
       setTimeout(() => setCopiedLink(false), 3000);
     });
+  };
+
+  const handleDownloadCanvas = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = canvas.width;
+    tempCanvas.height = canvas.height;
+    const ctx = tempCanvas.getContext('2d');
+    
+    // Fill warm background for the PNG
+    ctx.fillStyle = '#FBF6EE';
+    ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+    
+    // Draw the actual canvas on top
+    ctx.drawImage(canvas, 0, 0);
+
+    const dataUrl = tempCanvas.toDataURL('image/png');
+    const link = document.createElement('a');
+    link.download = `CozyCanvas-${roomCode}.png`;
+    link.href = dataUrl;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   // Reset database setup
@@ -749,6 +1044,16 @@ export default function App() {
   const handleCreateRoom = () => {
     const code = generateRoomCode();
     setRoomCode(code);
+    
+    // Explicitly init room doc immediately on creation so maxParticipants is correct
+    if (db) {
+      const roomRef = doc(db, 'rooms', code);
+      setDoc(roomRef, { 
+        createdAt: serverTimestamp(), 
+        maxParticipants: selectedMode === 'group' ? 5 : 2 
+      }).catch(() => {});
+    }
+
     triggerJoinConfetti();
   };
 
@@ -1013,9 +1318,89 @@ export default function App() {
 
   // Screen B: If DB configured but no room joined yet — Lobby
   if (!roomCode) {
-    return (
+    if (!selectedMode) {
+      return (
+        <div className="min-h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden">
+          <FloatingParticles />
+          <button
+            onClick={() => setShowSettings(!showSettings)}
+            className="absolute top-6 right-6 p-3 bg-white/5 hover:bg-white/10 transition rounded-full border border-white/5 cursor-pointer z-20"
+            title="Database Settings"
+          >
+            <Settings className="w-5 h-5 text-white/40" />
+          </button>
+          
+          {showSettings && (
+            <div className="absolute top-20 right-6 z-50 w-64 glass-card-strong rounded-2xl p-4 animate-fade-in">
+              <h3 className="text-sm font-bold text-white/70 mb-2">Database Connected</h3>
+              <p className="text-xs text-white/30 mb-4 font-mono truncate">{firebaseConfig.projectId}</p>
+              <button
+                onClick={handleResetConfig}
+                className="w-full py-2 px-4 bg-rose-400/10 hover:bg-rose-400/20 text-rose-400 font-semibold text-xs rounded-xl flex items-center justify-center gap-1.5 transition cursor-pointer border border-rose-400/10"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                Disconnect Database
+              </button>
+            </div>
+          )}
+
+          <div className="w-full max-w-2xl relative z-10 animate-fade-in flex flex-col items-center">
+            {/* Glowing Heart Logo */}
+            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-rose-400/20 to-amber-400/20 flex items-center justify-center mb-6 relative">
+              <Heart className="w-10 h-10 text-rose-400 fill-rose-400/30 animate-heart-glow" />
+              <div className="absolute inset-0 rounded-full bg-gradient-to-br from-rose-400/10 to-transparent blur-xl" />
+            </div>
+
+            <h1 className="text-4xl font-extrabold gradient-text text-center tracking-tight mb-2 font-display">CozyCanvas</h1>
+            <p className="text-white/35 text-center text-sm mb-10 max-w-md mx-auto">
+              Choose your canvas mode. Draw together in a cozy space.
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 w-full">
+              {/* Couple Room Card */}
+              <button
+                onClick={() => setSelectedMode('couple')}
+                className="glass-card-strong p-8 rounded-3xl flex flex-col items-start hover:-translate-y-1 hover:bg-white/[0.05] transition duration-300 text-left border border-white/5 hover:border-rose-400/30 group cursor-pointer"
+              >
+                <div className="w-12 h-12 rounded-full bg-rose-400/10 flex items-center justify-center mb-5 group-hover:scale-110 transition">
+                  <Heart className="w-6 h-6 text-rose-400" />
+                </div>
+                <h3 className="text-xl font-bold text-white/90 mb-2 font-display tracking-tight">Couple Room</h3>
+                <p className="text-white/40 text-sm leading-relaxed">
+                  The classic CozyCanvas experience — just you and your partner.
+                </p>
+              </button>
+
+              {/* Group Room Card */}
+              <button
+                onClick={() => setSelectedMode('group')}
+                className="glass-card-strong p-8 rounded-3xl flex flex-col items-start hover:-translate-y-1 hover:bg-white/[0.05] transition duration-300 text-left border border-white/5 hover:border-amber-400/30 group cursor-pointer"
+              >
+                <div className="w-12 h-12 rounded-full bg-amber-400/10 flex items-center justify-center mb-5 group-hover:scale-110 transition">
+                  <Users className="w-6 h-6 text-amber-400" />
+                </div>
+                <h3 className="text-xl font-bold text-white/90 mb-2 font-display tracking-tight">Invite the group</h3>
+                <p className="text-white/40 text-sm leading-relaxed">
+                  Draw and chat together with up to 5 of your favorite people.
+                </p>
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+  return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden">
         <FloatingParticles />
+
+        <button
+          onClick={() => setSelectedMode(null)}
+          className="absolute top-6 left-6 px-4 py-2 bg-white/5 hover:bg-white/10 transition rounded-xl border border-white/5 cursor-pointer z-20 text-white/40 font-semibold text-xs flex items-center gap-2"
+        >
+          <X className="w-3.5 h-3.5" />
+          Change Mode
+        </button>
 
         <button
           onClick={() => setShowSettings(!showSettings)}
@@ -1040,15 +1425,19 @@ export default function App() {
         )}
 
         <div className="w-full max-w-md glass-card-strong rounded-3xl p-10 flex flex-col items-center relative z-10 animate-fade-in">
-          {/* Glowing Heart Logo */}
+          {/* Glowing Mode Logo */}
           <div className="w-20 h-20 rounded-full bg-gradient-to-br from-rose-400/20 to-amber-400/20 flex items-center justify-center mb-6 relative">
-            <Heart className="w-10 h-10 text-rose-400 fill-rose-400/30 animate-heart-glow" />
+            {selectedMode === 'group' ? (
+              <Users className="w-10 h-10 text-amber-400 animate-heart-glow" />
+            ) : (
+              <Heart className="w-10 h-10 text-rose-400 fill-rose-400/30 animate-heart-glow" />
+            )}
             <div className="absolute inset-0 rounded-full bg-gradient-to-br from-rose-400/10 to-transparent blur-xl" />
           </div>
 
           <h1 className="text-4xl font-extrabold gradient-text text-center tracking-tight mb-2 font-display">CozyCanvas</h1>
           <p className="text-white/35 text-center text-sm mb-10">
-            Draw together, stay together. Create a shared canvas to express your love in real-time.
+            {selectedMode === 'group' ? 'Create a room to draw with friends.' : 'Create a shared canvas for you and your partner.'}
           </p>
 
           <div className="w-full space-y-6">
@@ -1111,10 +1500,10 @@ export default function App() {
           </div>
           <h2 className="text-2xl font-extrabold text-white/90 tracking-tight mb-2 font-display">Room is Full</h2>
           <p className="text-white/35 text-sm mb-6">
-            Only 2 people can draw together in a room at the same time. This room already has its couple!
+            This canvas is limited to {roomMaxParticipants} people. Ask them to start a new one!
           </p>
           <button
-            onClick={() => setRoomCode('')}
+            onClick={() => { setRoomCode(''); setSelectedMode(null); }}
             className="w-full btn-gradient py-3 px-6 rounded-2xl cursor-pointer text-sm"
           >
             Go Back
@@ -1177,33 +1566,47 @@ export default function App() {
             <Heart className="w-4 h-4 text-rose-400 fill-rose-400/40" />
           </div>
           <div>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
               <h2 className="text-sm font-bold gradient-text tracking-tight font-display">CozyCanvas</h2>
               <span className="px-2 py-0.5 bg-amber-400/10 border border-amber-400/15 text-amber-400/70 rounded-full text-[9px] font-semibold font-mono tracking-tighter">
                 {roomCode}
               </span>
+              <span className="px-2 py-0.5 bg-white/10 text-white/60 rounded-full text-[9px] font-semibold uppercase tracking-wider">
+                {roomMaxParticipants === 2 ? 'Couple' : 'Group'}
+              </span>
+              {streakCount > 0 && (
+                <span className="text-[10px] md:text-xs px-2 py-0.5 rounded-full bg-orange-400/20 text-orange-400 font-bold flex items-center gap-1" title="Current Streak">
+                  🔥 {streakCount} {streakCount === 1 ? 'day' : 'days'}
+                </span>
+              )}
             </div>
-            <p className="text-[10px] text-white/25 leading-none mt-0.5">Drawing as <span className="text-white/40 font-medium">{nickname}</span></p>
+            <div className="flex items-center gap-2 mt-0.5">
+              <p className="text-[10px] text-white/25 leading-none">Drawing as <span className="text-white/40 font-medium">{nickname}</span></p>
+              <div className={`text-[9px] text-emerald-400/60 font-medium transition-opacity duration-500 ${showSavedIndicator ? 'opacity-100' : 'opacity-0'}`}>
+                ✓ Saved
+              </div>
+            </div>
           </div>
         </div>
 
         {/* Right Side: Partner Presence indicator & Actions */}
         <div className="flex items-center gap-2.5">
           {/* Presence Indicator */}
-          <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-white/[0.03] rounded-full border border-white/[0.06] text-xs">
-            <span className="text-white/30 font-medium text-[11px]">Partner:</span>
-            {partner ? (
-              <div className="flex items-center gap-1.5">
-                <span className="font-semibold text-white/70 text-[11px]">{partner.name}</span>
-                <span
-                  className={`w-2 h-2 rounded-full ${
-                    isPartnerOnline ? 'bg-emerald-400 animate-soft-pulse' : 'bg-white/20'
-                  }`}
-                  style={isPartnerOnline ? { boxShadow: '0 0 8px rgba(52,211,153,0.5)' } : {}}
-                />
-              </div>
+          <div className="hidden sm:flex items-center gap-1.5 px-2 py-1.5 bg-white/[0.03] rounded-full border border-white/[0.06] text-xs">
+            {activePresences.length > 0 ? (
+              activePresences.map(p => (
+                <div key={p.userId} className="flex items-center gap-1.5 px-2 py-1 bg-white/5 rounded-full">
+                  <span className="font-semibold text-white/90 text-[11px] truncate max-w-[80px]">{p.name}</span>
+                  {p.activeColor && p.activeTool !== 'eraser' && (
+                    <span className="w-2.5 h-2.5 rounded-full border border-white/20" style={{ backgroundColor: p.activeColor }} title={`${p.name}'s color`} />
+                  )}
+                  {p.isDrawing && (
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" style={{ boxShadow: '0 0 8px rgba(52,211,153,0.5)' }} />
+                  )}
+                </div>
+              ))
             ) : (
-              <span className="text-white/20 font-medium italic text-[11px]">Waiting...</span>
+              <span className="text-white/20 font-medium italic text-[11px] px-2">Waiting for others...</span>
             )}
           </div>
 
@@ -1227,7 +1630,7 @@ export default function App() {
 
           {/* Quick Exit Room */}
           <button
-            onClick={() => setRoomCode('')}
+            onClick={() => setShowExitConfirm(true)}
             className="p-2 text-white/25 hover:text-rose-400 hover:bg-rose-400/10 transition rounded-full border border-transparent cursor-pointer"
             title="Leave room"
           >
@@ -1242,6 +1645,28 @@ export default function App() {
         {/* Left Section: Canvas and Bottom Toolbar */}
         <div className="flex-grow flex flex-col justify-between items-center relative overflow-hidden h-full w-full min-h-0">
 
+          {/* Daily Prompt Banner */}
+          {!hidePrompt && (
+            <div className="absolute top-4 z-20 w-full flex justify-center px-4 animate-fade-in pointer-events-none">
+              <div className="bg-black/40 backdrop-blur-md border border-white/10 rounded-full px-5 py-2 flex items-center gap-3 shadow-lg pointer-events-auto max-w-sm w-full">
+                <Sparkles className="w-4 h-4 text-amber-300 shrink-0" />
+                <span className="text-xs text-white/80 font-medium truncate flex-grow text-center">
+                  {DAILY_PROMPTS[Math.floor(Date.now() / 86400000) % DAILY_PROMPTS.length]}
+                </span>
+                <button 
+                  onClick={() => {
+                    const today = new Date().toISOString().split('T')[0];
+                    localStorage.setItem('cozy_canvas_prompt_hidden_date', today);
+                    setHidePrompt(true);
+                  }}
+                  className="w-5 h-5 rounded-full hover:bg-white/20 flex items-center justify-center transition shrink-0"
+                >
+                  <X className="w-3 h-3 text-white/50" />
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* 2. Main Canvas Area */}
           <main className="flex-grow flex items-center justify-center p-3 md:p-5 relative z-10 w-full">
             {/* Canvas Container — Full Bleed, No Polaroid */}
@@ -1255,32 +1680,65 @@ export default function App() {
                   onPointerDown={handlePointerDown}
                   onPointerMove={handlePointerMove}
                   onPointerUp={handlePointerUp}
-                  onPointerLeave={handlePointerUp}
-                  className={`w-full h-full bg-white touch-none ${isDrawing ? 'canvas-drawing' : ''}`}
+                  onPointerLeave={handlePointerLeave}
+                  className={`w-full h-full touch-none cursor-none ${isDrawing ? 'canvas-drawing' : ''}`}
+                  style={{ backgroundColor: '#FBF6EE' }}
                 />
 
-                {/* Partner's Cursor Position Overlay */}
-                {isPartnerOnline && partner.x !== null && partner.y !== null && (
+                {/* Local Custom Cursor Overlay */}
+                <div
+                  ref={cursorRef}
+                  className="absolute pointer-events-none z-20 flex items-center justify-center transition-none"
+                  style={{
+                    opacity: 0,
+                    transform: 'translate(-50%, -50%)',
+                    width: Math.max(activeTool === 'eraser' ? activeEraserSize : activeSize, 4),
+                    height: Math.max(activeTool === 'eraser' ? activeEraserSize : activeSize, 4)
+                  }}
+                >
                   <div
-                    className="absolute pointer-events-none transition-all duration-75 ease-out select-none z-10"
-                    style={{
-                      left: `${(partner.x / 1500) * 100}%`,
-                      top: `${(partner.y / 1500) * 100}%`,
-                      transform: 'translate(-50%, -50%)'
-                    }}
-                  >
-                    {/* Pointer brush circle with glow */}
+                    className="rounded-full w-full h-full"
+                    style={
+                      activeTool === 'eraser'
+                        ? { border: '2px dashed #888', backgroundColor: 'transparent' }
+                        : { backgroundColor: activeColor, border: '1px solid rgba(255, 255, 255, 0.8)', boxShadow: `0 0 4px ${activeColor}80` }
+                    }
+                  />
+                </div>
+
+                {/* Partners' Cursor Position Overlays */}
+                {activePresences.map(p => {
+                  if (p.x === null || p.y === null) return null;
+                  const cursorSize = p.activeTool === 'eraser' ? (p.activeEraserSize || 15) : (p.activeSize || 5);
+                  return (
                     <div
-                      className="w-4 h-4 rounded-full border-2 border-white animate-soft-pulse"
-                      style={{ backgroundColor: partner.activeColor || '#C85C50', boxShadow: `0 0 12px ${partner.activeColor || '#C85C50'}60` }}
-                    />
-                    {/* Name label */}
-                    <div className="ml-4 mt-1.5 px-2 py-0.5 bg-gray-900/80 text-white text-[9px] rounded-full backdrop-blur-sm font-semibold whitespace-nowrap flex items-center gap-1 border border-white/10" style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }}>
-                      <span>{partner.name}</span>
-                      {partner.isDrawing && <Brush className="w-2.5 h-2.5 text-rose-300" />}
+                      key={p.userId}
+                      className="absolute pointer-events-none transition-all duration-75 ease-out select-none z-10 flex items-center justify-center"
+                      style={{
+                        left: `${(p.x / 1500) * 100}%`,
+                        top: `${(p.y / 1500) * 100}%`,
+                        transform: 'translate(-50%, -50%)',
+                        width: Math.max(cursorSize, 8),
+                        height: Math.max(cursorSize, 8)
+                      }}
+                    >
+                      {/* Pointer brush circle */}
+                      <div
+                        className="rounded-full animate-soft-pulse w-full h-full"
+                        style={
+                          p.activeTool === 'eraser'
+                            ? { border: '2px dashed white', backdropFilter: 'invert(0.2)' }
+                            : { backgroundColor: p.activeColor || '#C85C50', border: '1px solid white', boxShadow: `0 0 12px ${p.activeColor || '#C85C50'}60` }
+                        }
+                      />
+                      {/* Name label */}
+                      <div className="absolute left-[calc(100%+8px)] top-1/2 -translate-y-1/2 px-2 py-0.5 bg-gray-900/80 text-white text-[9px] rounded-full backdrop-blur-sm font-semibold whitespace-nowrap flex items-center gap-1 border border-white/10" style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }}>
+                        <span>{p.name}</span>
+                        {p.isDrawing && <Brush className="w-2.5 h-2.5 text-rose-300" />}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })}
               </div>
             </div>
           </main>
@@ -1299,7 +1757,7 @@ export default function App() {
                         key={col.hex}
                         disabled={activeTool === 'eraser'}
                         onClick={() => setActiveColor(col.hex)}
-                        className={`w-6 h-6 rounded-full transition-all duration-200 relative flex items-center justify-center ${
+                        className={`w-6 h-6 rounded-full transition-all duration-200 relative flex items-center justify-center group ${
                           activeTool === 'eraser' ? 'opacity-20 cursor-not-allowed' : 'cursor-pointer hover:scale-125 active:scale-95'
                         }`}
                         style={{
@@ -1308,11 +1766,13 @@ export default function App() {
                             ? `0 0 0 2px #0f0f1a, 0 0 0 4px ${col.hex}, 0 0 14px ${col.hex}50`
                             : 'none'
                         }}
-                        title={col.name}
                       >
                         {activeColor === col.hex && activeTool !== 'eraser' && (
                           <Check className="w-3 h-3 text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" />
                         )}
+                        <span className="absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition duration-200 bg-gray-900/90 text-white text-[10px] py-1 px-2 rounded font-semibold whitespace-nowrap pointer-events-none z-50">
+                          {col.name}
+                        </span>
                       </button>
                     ))}
                   </div>
@@ -1348,16 +1808,16 @@ export default function App() {
 
                 {/* Brush Size Controls */}
                 <div className="flex items-center gap-2.5 flex-grow max-w-[140px] md:max-w-[180px]">
-                  <Brush className="w-3.5 h-3.5 text-white/20" />
+                  {activeTool === 'eraser' ? <Eraser className="w-3.5 h-3.5 text-white/20" /> : <Brush className="w-3.5 h-3.5 text-white/20" />}
                   <input
                     type="range"
                     min="2"
-                    max="30"
-                    value={activeSize}
-                    onChange={(e) => setActiveSize(parseInt(e.target.value))}
+                    max="50"
+                    value={activeTool === 'eraser' ? activeEraserSize : activeSize}
+                    onChange={(e) => activeTool === 'eraser' ? setActiveEraserSize(parseInt(e.target.value)) : setActiveSize(parseInt(e.target.value))}
                     className="w-full cursor-pointer h-1"
                   />
-                  <span className="text-[10px] font-bold text-white/30 w-6 text-right">{activeSize}px</span>
+                  <span className="text-[10px] font-bold text-white/30 w-6 text-right">{activeTool === 'eraser' ? activeEraserSize : activeSize}px</span>
                 </div>
               </div>
 
@@ -1365,14 +1825,25 @@ export default function App() {
 
               {/* Action Buttons */}
               <div className="flex items-center justify-between">
-                <button
-                  onClick={handleUndo}
-                  className="px-3.5 py-1.5 hover:bg-white/5 text-white/35 hover:text-white/60 rounded-xl border border-white/5 flex items-center gap-1.5 text-xs font-semibold transition cursor-pointer"
-                  title="Undo last stroke"
-                >
-                  <Undo2 className="w-3.5 h-3.5" />
-                  <span>Undo</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleUndo}
+                    className="px-3.5 py-1.5 hover:bg-white/5 text-white/35 hover:text-white/60 rounded-xl border border-white/5 flex items-center gap-1.5 text-xs font-semibold transition cursor-pointer"
+                    title="Undo last stroke"
+                  >
+                    <Undo2 className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Undo</span>
+                  </button>
+                  <button
+                    onClick={handleRedo}
+                    disabled={redoStack.length === 0}
+                    className="px-3.5 py-1.5 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white/5 text-white/35 hover:text-white/60 rounded-xl border border-white/5 flex items-center gap-1.5 text-xs font-semibold transition cursor-pointer"
+                    title="Redo last undone stroke"
+                  >
+                    <Redo2 className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Redo</span>
+                  </button>
+                </div>
 
                 <div className="flex items-center gap-2">
                   <button
@@ -1382,10 +1853,19 @@ export default function App() {
                         ? 'bg-emerald-400/10 text-emerald-400 border border-emerald-400/20'
                         : 'bg-white/5 hover:bg-white/[0.08] text-white/35 hover:text-white/60 border border-white/5'
                     }`}
-                    title="Copy room link"
+                    title="Copy invite link"
                   >
-                    {copiedLink ? <Check className="w-3.5 h-3.5" /> : <Share2 className="w-3.5 h-3.5" />}
-                    <span>{copiedLink ? 'Copied!' : 'Share'}</span>
+                    {copiedLink ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedLink ? 'Copied link!' : 'Copy invite link'}</span>
+                  </button>
+
+                  <button
+                    onClick={handleDownloadCanvas}
+                    className="px-3.5 py-1.5 bg-white/5 hover:bg-white/10 text-white/50 hover:text-white/80 rounded-xl border border-white/5 flex items-center gap-1.5 text-xs font-semibold transition cursor-pointer"
+                    title="Download drawing"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Download</span>
                   </button>
 
                   <button
@@ -1443,19 +1923,57 @@ export default function App() {
                       }`}
                     >
                       {/* Message Bubble */}
+                      {!isMe && (
+                        <div className="text-[10px] font-bold mb-0.5 px-1" style={{ color: getUserColor(msg.sender) }}>
+                          {msg.sender}
+                        </div>
+                      )}
                       <div
-                        className={`px-3.5 py-2 rounded-2xl text-xs leading-relaxed ${
+                        onClick={() => setActiveReactionMsgId(prev => prev === msg.id ? null : msg.id)}
+                        onContextMenu={(e) => { e.preventDefault(); setActiveReactionMsgId(prev => prev === msg.id ? null : msg.id); }}
+                        className={`px-3.5 py-2 rounded-2xl text-xs leading-relaxed relative cursor-pointer ${
                           isMe
                             ? 'bg-gradient-to-r from-rose-500/90 to-amber-500/90 text-white rounded-br-sm'
                             : 'bg-white/[0.08] text-white/70 rounded-bl-sm border border-white/5'
                         }`}
                       >
                         {msg.text}
+                        
+                        {/* Reaction Picker Popover */}
+                        {activeReactionMsgId === msg.id && (
+                          <div className={`absolute ${isMe ? 'right-0' : 'left-0'} -top-8 bg-black/80 backdrop-blur-md rounded-full shadow-xl border border-white/10 px-2 py-1 flex gap-1 z-40`}>
+                            {QUICK_REACTIONS.map(emoji => (
+                              <button
+                                key={emoji}
+                                onClick={(e) => { e.stopPropagation(); handleReaction(msg.id, emoji); }}
+                                className="w-6 h-6 hover:bg-white/20 rounded-full flex items-center justify-center transition-transform hover:scale-110"
+                              >
+                                {emoji}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
+
+                      {/* Display Reactions */}
+                      {msg.reactions && Object.values(msg.reactions).some(arr => arr.length > 0) && (
+                        <div className={`flex flex-wrap gap-1 mt-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
+                          {Object.entries(msg.reactions).map(([emoji, users]) => users.length > 0 && (
+                            <div
+                              key={emoji}
+                              onClick={() => handleReaction(msg.id, emoji)}
+                              className="bg-white/10 hover:bg-white/20 px-1.5 py-0.5 rounded-full text-[10px] flex items-center gap-1 cursor-pointer transition"
+                            >
+                              <span>{emoji}</span>
+                              <span className="text-white/60 font-semibold">{users.length}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
 
                       {/* Timestamp */}
                       <span className="text-[9px] text-white/20 mt-1 px-1">
-                        {isMe ? 'You' : msg.sender} • {msg.timestamp ? new Date(msg.timestamp.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Sending...'}
+                        {msg.timestamp ? new Date(msg.timestamp.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Sending...'}
                       </span>
                     </div>
                   );
@@ -1464,25 +1982,70 @@ export default function App() {
               <div ref={messagesEndRef} />
             </div>
 
+            {/* Typing Indicator */}
+            {activePresences.filter(p => p.isChatTyping && p.userId !== userId).length > 0 && (
+              <div className="px-4 py-1.5 text-[10px] text-white/40 italic flex items-center gap-1.5">
+                <span className="flex gap-0.5">
+                  <span className="w-1 h-1 rounded-full bg-white/40 animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="w-1 h-1 rounded-full bg-white/40 animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <span className="w-1 h-1 rounded-full bg-white/40 animate-bounce" style={{ animationDelay: '300ms' }} />
+                </span>
+                {activePresences.filter(p => p.isChatTyping && p.userId !== userId).map(u => u.name).join(', ')} {activePresences.filter(p => p.isChatTyping && p.userId !== userId).length === 1 ? 'is' : 'are'} typing...
+              </div>
+            )}
+
             {/* Message Input Form */}
-            <form onSubmit={handleSendMessage} className="p-3 border-t border-white/5 bg-white/[0.03] flex gap-2">
-              <input
-                type="text"
-                value={messageInput}
-                onChange={(e) => setMessageInput(e.target.value)}
-                onBlur={handleInputBlur}
-                placeholder="Write a sweet message..."
-                maxLength={200}
-                className="flex-grow px-3 py-2 glass-input rounded-xl text-xs transition"
-              />
-              <button
-                type="submit"
-                disabled={!messageInput.trim()}
-                className="p-2 btn-gradient disabled:opacity-20 disabled:shadow-none rounded-xl transition cursor-pointer flex items-center justify-center shrink-0"
-              >
-                <Send className="w-3.5 h-3.5" />
-              </button>
-            </form>
+            <div className="relative p-3 border-t border-white/5 bg-white/[0.03]">
+              {showEmojiPicker && (
+                <>
+                  {/* Invisible Backdrop to close on click outside */}
+                  <div 
+                    className="fixed inset-0 z-40"
+                    onClick={() => setShowEmojiPicker(false)}
+                  />
+                  <div className="absolute bottom-full left-0 mb-2 z-50 shadow-2xl bg-[#222222] rounded-xl overflow-hidden border border-white/10">
+                    <div className="flex justify-end p-2 border-b border-white/5 bg-black/20">
+                      <button 
+                        onClick={() => setShowEmojiPicker(false)}
+                        className="p-1 hover:bg-white/10 rounded-full transition text-white/40 hover:text-white cursor-pointer"
+                        title="Close Emojis"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <EmojiPicker 
+                      theme="dark" 
+                      onEmojiClick={(emojiData) => setMessageInput(prev => prev + emojiData.emoji)}
+                    />
+                  </div>
+                </>
+              )}
+              <form onSubmit={handleSendMessage} className="flex gap-2 relative z-50">
+                <button
+                  type="button"
+                  onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                  className="p-2 text-white/30 hover:text-white/60 transition cursor-pointer shrink-0"
+                >
+                  <Smile className="w-4 h-4" />
+                </button>
+                <input
+                  type="text"
+                  value={messageInput}
+                  onChange={handleMessageInputChange}
+                  onBlur={handleInputBlur}
+                  placeholder="Write a sweet message..."
+                  maxLength={200}
+                  className="flex-grow px-3 py-2 glass-input rounded-xl text-xs transition"
+                />
+                <button
+                  type="submit"
+                  disabled={!messageInput.trim()}
+                  className="p-2 btn-gradient disabled:opacity-20 disabled:shadow-none rounded-xl transition cursor-pointer flex items-center justify-center shrink-0"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                </button>
+              </form>
+            </div>
           </div>
         )}
       </div>
@@ -1510,6 +2073,35 @@ export default function App() {
                 className="flex-1 py-3 btn-gradient rounded-xl text-sm cursor-pointer"
               >
                 Yes, clear all
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5. Exit Room Confirmation Overlay */}
+      {showExitConfirm && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-6 z-50">
+          <div className="w-full max-w-sm glass-card-strong rounded-3xl p-6 flex flex-col items-center animate-fade-in">
+            <div className="w-12 h-12 rounded-full bg-rose-400/10 flex items-center justify-center mb-4">
+              <LogOut className="w-6 h-6 text-rose-400" />
+            </div>
+            <h3 className="text-lg font-bold text-white/90 text-center mb-2 font-display">Leave Room?</h3>
+            <p className="text-white/35 text-sm text-center mb-6 leading-relaxed">
+              Are you sure you want to exit? Your drawings will remain in the room.
+            </p>
+            <div className="flex gap-3 w-full">
+              <button
+                onClick={() => setShowExitConfirm(false)}
+                className="flex-1 py-3 bg-white/5 hover:bg-white/10 transition rounded-xl text-white/50 text-sm font-semibold cursor-pointer border border-white/5"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => { setShowExitConfirm(false); setRoomCode(''); }}
+                className="flex-1 py-3 btn-gradient rounded-xl text-sm cursor-pointer"
+              >
+                Yes, leave
               </button>
             </div>
           </div>
