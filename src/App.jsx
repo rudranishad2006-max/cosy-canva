@@ -196,9 +196,19 @@ const FloatingParticles = () => (
 
 export default function App() {
   // 1. Firebase Config Management
-  // No credentials are baked into the app. Config comes from a .env file (VITE_FIREBASE_*) or from
-  // the on-screen setup form (saved to localStorage). To bake in a default, set an object here.
-  const DEFAULT_FIREBASE_CONFIG = null;
+  // A Firebase WEB config is safe to ship publicly — it only identifies the project, not grants
+  // access. Security is enforced by the deployed Firestore rules (require auth, see firestore.rules)
+  // + Anonymous Auth. This default lets production builds (which have no .env) connect out of the box.
+  // Local dev can override it via a .env file (VITE_FIREBASE_*) or the on-screen setup form.
+  const DEFAULT_FIREBASE_CONFIG = {
+    apiKey: "AIzaSyD3nNWvrPdvqlZYmW30Q87qxKRdmjM7so8",
+    authDomain: "cosy-canva.firebaseapp.com",
+    projectId: "cosy-canva",
+    storageBucket: "cosy-canva.firebasestorage.app",
+    messagingSenderId: "164120165333",
+    appId: "1:164120165333:web:990737ee463de97637db5c",
+    measurementId: "G-W3DFQSD1GR"
+  };
 
   const [firebaseConfig, setFirebaseConfig] = useState(() => {
     const saved = localStorage.getItem('cozy_canvas_db_config');
