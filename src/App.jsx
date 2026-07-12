@@ -196,16 +196,9 @@ const FloatingParticles = () => (
 
 export default function App() {
   // 1. Firebase Config Management
-  // Tip: If you want to bake your database configuration directly into the app so users don't have to enter it:
-  // Set your config object here instead of null:
-  const DEFAULT_FIREBASE_CONFIG = {
-    apiKey: "AIzaSyAq7tZt6kn5bJXNguxIuX3__0AopTh1nyk",
-    authDomain: "test-e33f5.firebaseapp.com",
-    projectId: "test-e33f5",
-    storageBucket: "test-e33f5.firebasestorage.app",
-    messagingSenderId: "506111090456",
-    appId: "1:506111090456:web:61ad48eefdc439e63c086d"
-  };
+  // No credentials are baked into the app. Config comes from a .env file (VITE_FIREBASE_*) or from
+  // the on-screen setup form (saved to localStorage). To bake in a default, set an object here.
+  const DEFAULT_FIREBASE_CONFIG = null;
 
   const [firebaseConfig, setFirebaseConfig] = useState(() => {
     const saved = localStorage.getItem('cozy_canvas_db_config');
