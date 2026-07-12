@@ -30,16 +30,17 @@ CozyCanvas is an intimate, real-time collaborative scrapbook drawing canvas web 
 
 ```text
 cozy-canva/
-├── .env.example        # Reference environment variables template
-├── index.html          # Entry HTML page (loads Inter & Quicksand fonts)
-├── package.json        # Project scripts & dependencies configuration
-├── vite.config.js      # Vite compilation configuration
-├── public/             # Static public assets
+├── .env.example         # Reference environment variables template
+├── firestore.rules      # Firestore Security Rules (deploy these — see below)
+├── index.html           # Entry HTML page (loads Inter & Quicksand fonts)
+├── package.json         # Project scripts & dependencies configuration
+├── vite.config.js       # Vite compilation configuration
+├── public/              # Static public assets
 └── src/
-    ├── main.jsx        # App mounting point
-    ├── App.jsx         # Core app logic (routes, Firestore sync, canvas logic, UI)
-    ├── App.css         # Main App stylesheet
-    └── index.css       # Core stylesheet (glassmorphism variables, animations, styles)
+    ├── main.jsx         # App mounting point (wraps App in ErrorBoundary)
+    ├── App.jsx          # Core app logic (routes, Firestore sync, canvas logic, UI)
+    ├── ErrorBoundary.jsx # Catches runtime errors and shows a recovery screen
+    └── index.css        # Core stylesheet (glassmorphism variables, animations, styles)
 ```
 
 ---
@@ -96,35 +97,32 @@ VITE_FIREBASE_PROJECT_ID=your-project-id
 VITE_FIREBASE_STORAGE_BUCKET=your-project-id.appspot.com
 VITE_FIREBASE_MESSAGING_SENDER_ID=your-messaging-sender-id
 VITE_FIREBASE_APP_ID=your-app-id
-VITE_ADMIN_PASSCODE=cozyadmin123
+# Set your own admin secret; leave blank to disable the admin panel.
+VITE_ADMIN_PASSCODE=
 ```
 
-### 3. Create Firestore Database & Set Security Rules
+> **Security note:** `VITE_ADMIN_PASSCODE` is a convenience gate that runs in the browser — it is **not** real access control. Anyone can read client-side env values in a built app. The real protection for your data is the Firestore Security Rules below.
+
+### 3. Create Firestore Database
 1. In the Firebase console left menu, go to **Build** > **Firestore Database**.
 2. Click **Create Database** and select your location.
-3. Select **Start in test mode** or configure your rules under the **Rules** tab:
 
-```javascript
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    // Allows public read/write to all rooms and subcollections
-    match /rooms/{room} {
-      allow read, write: if true;
-      
-      match /strokes/{stroke} {
-        allow read, write: if true;
-      }
-      match /messages/{message} {
-        allow read, write: if true;
-      }
-      match /presence/{user} {
-        allow read, write: if true;
-      }
-    }
-  }
-}
-```
+### 4. Enable Anonymous Auth & Deploy Security Rules
+The app signs in anonymously on load so that Firestore rules can require an authenticated session
+instead of being open to the entire internet.
+
+1. Go to **Build** > **Authentication** > **Sign-in method**, and **enable Anonymous**.
+2. Deploy the rules shipped in [`firestore.rules`](./firestore.rules):
+   ```bash
+   firebase deploy --only firestore:rules
+   ```
+   (or paste the file's contents into the **Firestore > Rules** tab and **Publish**).
+
+> ⚠️ **Do not run in "test mode" (`allow read, write: if true`) in production** — that lets anyone
+> on the internet read, overwrite, or delete every room. The provided rules require
+> `request.auth != null` and add basic shape/size validation. If Anonymous Auth is not enabled, the
+> app logs a warning and continues to work under whatever rules you currently have (so nothing breaks
+> during setup).
 
 ---
 

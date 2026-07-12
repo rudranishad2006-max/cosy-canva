@@ -1,29 +1,25 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { 
-  Sparkles, 
-  Undo2, 
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import {
+  Sparkles,
+  Undo2,
   Redo2,
-  Trash2, 
-  Copy, 
-  Plus, 
-  ChevronRight, 
-  Palette, 
-  Brush, 
-  Users, 
-  Check, 
-  Settings, 
-  Heart, 
-  HeartOff, 
-  Share2, 
+  Trash2,
+  Copy,
+  ChevronRight,
+  Palette,
+  Brush,
+  Users,
+  Check,
+  Settings,
+  Heart,
+  HeartOff,
   LogOut,
   MessageSquare,
   Send,
   X,
   Eraser,
   Download,
-  Smile,
-  ChevronDown,
-  Keyboard
+  Smile
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import EmojiPicker from 'emoji-picker-react';
@@ -41,8 +37,12 @@ import {
   query, 
   orderBy, 
   getDoc,
-  serverTimestamp 
+  getDocs,
+  serverTimestamp
 } from 'firebase/firestore';
+
+// Firebase Auth (anonymous) — lets Firestore Security Rules require an authenticated session
+import { getAuth, signInAnonymously } from 'firebase/auth';
 
 // Cozy Room Code Wordlists
 const ADJECTIVES = ['warm', 'cozy', 'gentle', 'soft', 'golden', 'misty', 'starry', 'dusky', 'amber', 'rosy', 'dreamy', 'silent', 'peaceful', 'sweet', 'blushing', 'velvet', 'tender', 'floral'];
@@ -133,7 +133,9 @@ const triggerHeartConfetti = () => {
 // Custom Hook: useThrottle
 const useThrottle = (callback, delay) => {
   const latestCallback = useRef(callback);
-  latestCallback.current = callback;
+  useEffect(() => {
+    latestCallback.current = callback;
+  }, [callback]);
   const lastCalled = useRef(0);
   const timeout = useRef(null);
 
@@ -163,7 +165,7 @@ const parseFirebaseConfig = (text) => {
   try {
     const parsed = JSON.parse(text);
     if (parsed.apiKey && parsed.projectId) return parsed;
-  } catch (e) {}
+  } catch { /* not JSON — fall through to regex parsing */ }
 
   const apiKey = text.match(/apiKey:\s*["']([^"']+)["']/)?.[1];
   const authDomain = text.match(/authDomain:\s*["']([^"']+)["']/)?.[1];
@@ -208,7 +210,7 @@ export default function App() {
   const [firebaseConfig, setFirebaseConfig] = useState(() => {
     const saved = localStorage.getItem('cozy_canvas_db_config');
     if (saved) {
-      try { return JSON.parse(saved); } catch (e) {}
+      try { return JSON.parse(saved); } catch { /* invalid stored config — fall back to env/default */ }
     }
     if (import.meta.env.VITE_FIREBASE_API_KEY) {
       return {
@@ -233,6 +235,12 @@ export default function App() {
     try {
       const apps = getApps();
       const app = apps.length > 0 ? apps[0] : initializeApp(firebaseConfig);
+      // Sign in anonymously so Firestore Security Rules can require request.auth != null.
+      // Best-effort: if Anonymous Auth isn't enabled in the Firebase console yet, we log and
+      // continue so the app keeps working under the existing rules.
+      signInAnonymously(getAuth(app)).catch((err) =>
+        console.warn('Anonymous auth unavailable (enable it in Firebase console for secure rules):', err.code)
+      );
       return getFirestore(app);
     } catch (e) {
       console.error('Firebase DB Init Error:', e);
@@ -253,7 +261,7 @@ export default function App() {
   const [userId] = useState(() => {
     let id = localStorage.getItem('cozy_canvas_user_id');
     if (!id) {
-      id = `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      id = `user-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
       localStorage.setItem('cozy_canvas_user_id', id);
     }
     return id;
@@ -343,8 +351,10 @@ export default function App() {
   const assignedColorRef = useRef(false);
   useEffect(() => {
     if (!roomCode) {
+      /* eslint-disable react-hooks/set-state-in-effect */
       setPresenceLoaded(false);
       setPresenceList([]);
+      /* eslint-enable react-hooks/set-state-in-effect */
       messagesLoadedRef.current = false;
       assignedColorRef.current = false;
     }
@@ -355,11 +365,13 @@ export default function App() {
     if (presenceLoaded && !assignedColorRef.current) {
       const usedColors = presenceList.map(p => p.activeColor);
       const availableColors = COLORS.filter(c => !usedColors.includes(c.hex));
+      /* eslint-disable react-hooks/set-state-in-effect */
       if (availableColors.length > 0) {
         setActiveColor(availableColors[0].hex);
       } else {
         setActiveColor(COLORS[Math.floor(Math.random() * COLORS.length)].hex);
       }
+      /* eslint-enable react-hooks/set-state-in-effect */
       assignedColorRef.current = true;
     }
   }, [presenceLoaded, presenceList]);
@@ -395,7 +407,7 @@ export default function App() {
             });
           }
         }
-      } catch (e) {}
+      } catch { /* streak update is best-effort */ }
     };
     checkStreak();
 
@@ -448,6 +460,7 @@ export default function App() {
   useEffect(() => {
     showChatRef.current = showChat;
     if (showChat) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setUnreadCount(0);
     }
   }, [showChat]);
@@ -487,6 +500,7 @@ export default function App() {
 
   useEffect(() => {
     if (visibleStrokes.length > 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setShowSavedIndicator(true);
       const timer = setTimeout(() => setShowSavedIndicator(false), 2000);
       return () => clearTimeout(timer);
@@ -494,11 +508,11 @@ export default function App() {
   }, [visibleStrokes]);
 
   const activePresences = useMemo(() => {
+    // Clock-based filter to drop stale presences; presenceList updates via heartbeats often
+    // enough to keep this current.
+    // eslint-disable-next-line react-hooks/purity
     return presenceList.filter(p => Date.now() - p.lastActive < 15000);
   }, [presenceList]);
-
-  const partner = activePresences[0]; // Designed for couples (only 1 active partner)
-  const isPartnerOnline = !!partner;
 
   const activeOthersCount = activePresences.length;
   const isRoomFull = activeOthersCount >= roomMaxParticipants;
@@ -508,24 +522,21 @@ export default function App() {
     if (!db || !roomCode || !nickname || !userId || !presenceLoaded || isRoomFull) return;
 
     const presenceRef = doc(db, 'rooms', roomCode, 'presence', userId);
-    
-    // Create base presence doc
-    const writePresence = async (x = null, y = null, drawing = false, points = []) => {
+
+    // Create base presence doc (identity + liveness only). Tool settings are kept current by a
+    // separate effect below so that changing color/size/tool does NOT tear down presence.
+    const writePresence = async () => {
       try {
         await setDoc(presenceRef, {
           userId,
           name: nickname,
-          x,
-          y,
-          isDrawing: drawing,
-          activeColor,
-          activeSize,
-          activeEraserSize,
-          activeTool,
-          currentPoints: points,
+          x: null,
+          y: null,
+          isDrawing: false,
+          currentPoints: [],
           lastActive: Date.now()
         }, { merge: true });
-      } catch (e) {}
+      } catch { /* best-effort presence write */ }
     };
 
     writePresence();
@@ -543,7 +554,22 @@ export default function App() {
       clearInterval(interval);
       deleteDoc(presenceRef).catch(() => {});
     };
-  }, [db, roomCode, nickname, userId, activeColor, activeSize, activeEraserSize, presenceLoaded, isRoomFull, activeTool]);
+  }, [db, roomCode, nickname, userId, presenceLoaded, isRoomFull]);
+
+  // Sync active tool settings into presence WITHOUT re-running the heartbeat effect (which would
+  // delete + recreate the doc and make the partner's cursor flicker). merge:true creates the doc
+  // if the heartbeat hasn't written it yet.
+  useEffect(() => {
+    if (!db || !roomCode || !userId || !presenceLoaded || isRoomFull) return;
+    const presenceRef = doc(db, 'rooms', roomCode, 'presence', userId);
+    setDoc(presenceRef, {
+      activeColor,
+      activeSize,
+      activeEraserSize,
+      activeTool,
+      lastActive: Date.now()
+    }, { merge: true }).catch(() => { /* heartbeat will (re)create the doc */ });
+  }, [db, roomCode, userId, presenceLoaded, isRoomFull, activeColor, activeSize, activeEraserSize, activeTool]);
 
   // DB Sync 5: Listen to Partner Presence
   useEffect(() => {
@@ -665,7 +691,7 @@ export default function App() {
         isEraser: activeTool === 'eraser'
       });
     }
-  }, [visibleStrokes, isPartnerOnline, partner, activeColor, activeSize, activeEraserSize, activeTool]);
+  }, [visibleStrokes, activePresences, activeColor, activeSize, activeEraserSize, activeTool]);
 
   // Redraw when strokes, partner status, or settings change
   useEffect(() => {
@@ -788,7 +814,7 @@ export default function App() {
       // Clear redoStack on new stroke
       setRedoStack([]);
       
-      const strokeId = `stroke-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const strokeId = `stroke-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
       const strokeRef = doc(db, 'rooms', roomCode, 'strokes', strokeId);
       
       // Save complete stroke
@@ -853,7 +879,7 @@ export default function App() {
     const presenceRef = doc(db, 'rooms', roomCode, 'presence', userId);
     updateDoc(presenceRef, { isChatTyping: false }).catch(() => {});
 
-    const msgId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const msgId = `msg-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
     const msgRef = doc(db, 'rooms', roomCode, 'messages', msgId);
 
     try {
@@ -946,35 +972,42 @@ export default function App() {
     }
   };
 
+  // Keep latest undo/redo handlers in a ref so the global key listener attaches once, instead of
+  // re-attaching on every render (this component re-renders on every stroke and cursor move).
+  const keyHandlersRef = useRef({ handleUndo, handleRedo });
+  useEffect(() => {
+    keyHandlersRef.current = { handleUndo, handleRedo };
+  });
+
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') {
         return;
       }
-      
+
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
         if (e.shiftKey) {
-          handleRedo();
+          keyHandlersRef.current.handleRedo();
         } else {
-          handleUndo();
+          keyHandlersRef.current.handleUndo();
         }
         e.preventDefault();
       }
-      
+
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
-        handleRedo();
+        keyHandlersRef.current.handleRedo();
         e.preventDefault();
       }
-      
+
       if (!e.ctrlKey && !e.metaKey) {
         if (e.key.toLowerCase() === 'b') setActiveTool('pen');
         if (e.key.toLowerCase() === 'e') setActiveTool('eraser');
       }
     };
-    
+
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  });
+  }, []);
 
   const handleShareLink = () => {
     const shareUrl = `${window.location.origin}${window.location.pathname}?room=${roomCode}`;
@@ -1070,11 +1103,13 @@ export default function App() {
   // Admin authentication submit
   const handleAdminAuth = (e) => {
     e.preventDefault();
-    const correctPasscode = import.meta.env.VITE_ADMIN_PASSCODE || 'cozyadmin123';
-    if (adminPasscodeInput === correctPasscode) {
+    const correctPasscode = import.meta.env.VITE_ADMIN_PASSCODE;
+    if (correctPasscode && adminPasscodeInput === correctPasscode) {
       setAdminAuthenticated(true);
       setAdminError('');
       loadRoomsDirectly();
+    } else if (!correctPasscode) {
+      setAdminError('Admin access is not configured. Set VITE_ADMIN_PASSCODE in your environment.');
     } else {
       setAdminError('Invalid passcode. Access denied.');
     }
@@ -1526,7 +1561,7 @@ export default function App() {
 
           <form onSubmit={handleNicknameSubmit} className="w-full space-y-4">
             <div className="space-y-1.5">
-              <label className="block text-[10px] font-semibold uppercase tracking-widest text-white/25 text-center">What should your partner call you?</label>
+              <label className="block text-[10px] font-semibold uppercase tracking-widest text-white/25 text-center">{roomMaxParticipants > 2 ? 'What should the group call you?' : 'What should your partner call you?'}</label>
               <input
                 type="text"
                 maxLength={16}
@@ -1651,6 +1686,7 @@ export default function App() {
               <div className="bg-black/40 backdrop-blur-md border border-white/10 rounded-full px-5 py-2 flex items-center gap-3 shadow-lg pointer-events-auto max-w-sm w-full">
                 <Sparkles className="w-4 h-4 text-amber-300 shrink-0" />
                 <span className="text-xs text-white/80 font-medium truncate flex-grow text-center">
+                  {/* eslint-disable-next-line react-hooks/purity -- intentional daily (clock-based) prompt */}
                   {DAILY_PROMPTS[Math.floor(Date.now() / 86400000) % DAILY_PROMPTS.length]}
                 </span>
                 <button 
@@ -2059,7 +2095,7 @@ export default function App() {
             </div>
             <h3 className="text-lg font-bold text-white/90 text-center mb-2 font-display">Wipe canvas?</h3>
             <p className="text-white/35 text-sm text-center mb-6 leading-relaxed">
-              This will erase all drawings for both you and your partner. Are you sure you want to start fresh?
+              This will erase all drawings for everyone in the room. Are you sure you want to start fresh?
             </p>
             <div className="flex gap-3 w-full">
               <button
