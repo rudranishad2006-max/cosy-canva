@@ -19,7 +19,9 @@ import {
   X,
   Eraser,
   Download,
-  Smile
+  Smile,
+  Sun,
+  Moon
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import EmojiPicker from 'emoji-picker-react';
@@ -180,18 +182,72 @@ const parseFirebaseConfig = (text) => {
   return null;
 };
 
-// Floating ambient particles component
-const FloatingParticles = () => (
-  <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
-    <div className="particle w-2 h-2 bg-rose-400/20" style={{ top: '15%', left: '10%', animationDelay: '0s' }} />
-    <div className="particle w-3 h-3 bg-amber-400/15" style={{ top: '70%', left: '80%', animationDelay: '2s' }} />
-    <div className="particle-slow w-4 h-4 bg-rose-300/10" style={{ top: '40%', left: '60%', animationDelay: '4s' }} />
-    <div className="particle w-1.5 h-1.5 bg-amber-300/20" style={{ top: '85%', left: '25%', animationDelay: '1s' }} />
-    <div className="particle-slow w-5 h-5 bg-rose-400/[0.08]" style={{ top: '20%', left: '75%', animationDelay: '3s' }} />
-    <div className="particle w-2.5 h-2.5 bg-amber-400/[0.12]" style={{ top: '55%', left: '15%', animationDelay: '5s' }} />
-    <div className="particle-slow w-3 h-3 bg-rose-300/15" style={{ top: '90%', left: '50%', animationDelay: '6s' }} />
-    <div className="particle w-2 h-2 bg-amber-300/[0.18]" style={{ top: '10%', left: '45%', animationDelay: '7s' }} />
+// Cute ambient scene: paper grain + vignette (in CSS) plus a slow, quiet cast of
+// drifting hearts, twinkling stars (evening) and soft clouds (day). Theme visibility
+// and motion are handled in index.css; this just lays out the players.
+const SCENE_HEARTS = [
+  { left: '7%',  size: 22, dur: 23, delay: 0,   color: '#C85C50' },
+  { left: '82%', size: 15, dur: 27, delay: 5,   color: '#D4A59A' },
+  { left: '58%', size: 28, dur: 31, delay: 9,   color: '#E5A469' },
+  { left: '30%', size: 14, dur: 25, delay: 2.5, color: '#D4A59A' },
+  { left: '93%', size: 18, dur: 29, delay: 7,   color: '#C85C50' },
+  { left: '44%', size: 12, dur: 21, delay: 13,  color: '#E5A469' }
+];
+const SCENE_STARS = [
+  { left: '12%', top: '22%', size: 10, delay: 0 },
+  { left: '24%', top: '12%', size: 7,  delay: 1.4 },
+  { left: '68%', top: '18%', size: 8,  delay: 0.8 },
+  { left: '80%', top: '34%', size: 6,  delay: 2.1 },
+  { left: '48%', top: '9%',  size: 9,  delay: 1.1 },
+  { left: '88%', top: '52%', size: 7,  delay: 3.0 },
+  { left: '16%', top: '46%', size: 6,  delay: 2.6 },
+  { left: '36%', top: '28%', size: 5,  delay: 1.8 }
+];
+const SCENE_CLOUDS = [
+  { top: '16%', width: 150, dur: 46, delay: 0 },
+  { top: '32%', width: 110, dur: 58, delay: 10 },
+  { top: '11%', width: 90,  dur: 52, delay: 26 }
+];
+
+const HeartMark = ({ color, size }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill={color} aria-hidden="true">
+    <path d="M12 21s-7.6-4.9-7.6-10.4A4.4 4.4 0 0 1 12 7.3a4.4 4.4 0 0 1 7.6 3.3C19.6 16.1 12 21 12 21z" />
+  </svg>
+);
+
+const Atmosphere = () => (
+  <div className="atmosphere" aria-hidden="true">
+    <div className="celestial celestial-moon evening-only" />
+    <div className="celestial celestial-sun day-only" />
+    <div className="cozy-scene">
+      {SCENE_STARS.map((s, i) => (
+        <span key={`st${i}`} className="star evening-only"
+          style={{ left: s.left, top: s.top, width: s.size, height: s.size, animationDelay: `${s.delay}s` }} />
+      ))}
+      {SCENE_CLOUDS.map((c, i) => (
+        <span key={`cl${i}`} className="cloud day-only"
+          style={{ top: c.top, width: c.width, animationDuration: `${c.dur}s`, animationDelay: `${c.delay}s` }} />
+      ))}
+      {SCENE_HEARTS.map((h, i) => (
+        <span key={`ht${i}`} className="drift-heart"
+          style={{ left: h.left, bottom: '4%', animationDuration: `${h.dur}s`, animationDelay: `${h.delay}s` }}>
+          <HeartMark color={h.color} size={h.size} />
+        </span>
+      ))}
+    </div>
   </div>
+);
+
+// Day / Evening theme toggle. Shows the mode you'll switch *to*.
+const ThemeToggle = ({ theme, onToggle, className = '' }) => (
+  <button
+    onClick={onToggle}
+    className={`p-2.5 bg-white/5 hover:bg-white/10 transition rounded-full border border-white/10 text-white/60 hover:text-white/80 cursor-pointer ${className}`}
+    title={theme === 'day' ? 'Switch to evening' : 'Switch to day'}
+    aria-label={theme === 'day' ? 'Switch to evening mode' : 'Switch to day mode'}
+  >
+    {theme === 'day' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+  </button>
 );
 
 export default function App() {
@@ -231,6 +287,15 @@ export default function App() {
   const [configInput, setConfigInput] = useState('');
   const [configError, setConfigError] = useState('');
   const [showSettings, setShowSettings] = useState(false);
+
+  // Theme: 'evening' (warm dark, default) | 'day' (warm light). Persisted + reflected
+  // onto <html data-theme> so all the theme CSS can key off it.
+  const [theme, setTheme] = useState(() => localStorage.getItem('cozy_canvas_theme') || 'evening');
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem('cozy_canvas_theme', theme);
+  }, [theme]);
+  const toggleTheme = useCallback(() => setTheme((t) => (t === 'day' ? 'evening' : 'day')), []);
 
   // Initialize DB
   const db = useMemo(() => {
@@ -278,6 +343,28 @@ export default function App() {
   const [isDrawing, setIsDrawing] = useState(false);
   const cursorRef = useRef(null);
   const currentStrokePoints = useRef([]);
+
+  // Ratio between the canvas's on-screen (CSS) size and its internal 1500px drawing
+  // space. Brush/eraser sizes are in the 1500 space, so the cursor preview must be
+  // scaled by this to match the thickness that actually gets drawn.
+  const [canvasScale, setCanvasScale] = useState(1);
+  const resizeObsRef = useRef(null);
+  const attachCanvas = useCallback((node) => {
+    canvasRef.current = node;
+    if (resizeObsRef.current) {
+      resizeObsRef.current.disconnect();
+      resizeObsRef.current = null;
+    }
+    if (node) {
+      const measure = () => {
+        const w = node.getBoundingClientRect().width;
+        if (w) setCanvasScale(w / 1500);
+      };
+      measure();
+      resizeObsRef.current = new ResizeObserver(measure);
+      resizeObsRef.current.observe(node);
+    }
+  }, []);
 
   // 4. Collaborative Sync States
   const [strokes, setStrokes] = useState([]);
@@ -1189,7 +1276,7 @@ export default function App() {
   if (!firebaseConfig) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6 relative overflow-hidden">
-        <FloatingParticles />
+        <Atmosphere />
         <div className="w-full max-w-lg glass-card-strong rounded-3xl p-8 flex flex-col items-center relative z-10 animate-fade-in">
           <div className="w-16 h-16 rounded-full bg-gradient-to-br from-rose-400/20 to-amber-400/20 flex items-center justify-center mb-5">
             <Heart className="w-8 h-8 text-rose-400 fill-rose-400/30 animate-heart-glow" />
@@ -1241,7 +1328,7 @@ export default function App() {
     if (!adminAuthenticated) {
       return (
         <div className="min-h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden">
-          <FloatingParticles />
+          <Atmosphere />
           <div className="w-full max-w-sm glass-card-strong rounded-3xl p-8 flex flex-col items-center relative z-10 animate-fade-in">
             <div className="w-14 h-14 rounded-full bg-white/5 flex items-center justify-center mb-6">
               <Settings className="w-7 h-7 text-white/40 animate-pulse" />
@@ -1271,7 +1358,7 @@ export default function App() {
 
     return (
       <div className="min-h-screen p-6 md:p-12 flex flex-col items-center relative overflow-hidden">
-        <FloatingParticles />
+        <Atmosphere />
         <div className="w-full max-w-4xl glass-card-strong rounded-3xl p-6 md:p-10 relative z-10">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-white/5 pb-6 mb-6 gap-4">
             <div>
@@ -1359,7 +1446,8 @@ export default function App() {
     if (!selectedMode) {
       return (
         <div className="min-h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden">
-          <FloatingParticles />
+          <Atmosphere />
+          <ThemeToggle theme={theme} onToggle={toggleTheme} className="absolute top-6 right-20 z-20" />
           <button
             onClick={() => setShowSettings(!showSettings)}
             className="absolute top-6 right-6 p-3 bg-white/5 hover:bg-white/10 transition rounded-full border border-white/5 cursor-pointer z-20"
@@ -1430,7 +1518,7 @@ export default function App() {
 
   return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden">
-        <FloatingParticles />
+        <Atmosphere />
 
         <button
           onClick={() => setSelectedMode(null)}
@@ -1440,6 +1528,7 @@ export default function App() {
           Change Mode
         </button>
 
+        <ThemeToggle theme={theme} onToggle={toggleTheme} className="absolute top-6 right-20 z-20" />
         <button
           onClick={() => setShowSettings(!showSettings)}
           className="absolute top-6 right-6 p-3 bg-white/5 hover:bg-white/10 transition rounded-full border border-white/5 cursor-pointer z-20"
@@ -1518,7 +1607,7 @@ export default function App() {
   if (roomCode && !presenceLoaded) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden">
-        <FloatingParticles />
+        <Atmosphere />
         <div className="w-full max-w-sm glass-card-strong rounded-3xl p-8 flex flex-col items-center relative z-10 animate-fade-in">
           <div className="w-10 h-10 border-4 border-rose-400/30 border-t-rose-400 rounded-full animate-spin mb-4"></div>
           <p className="text-white/40 text-sm font-semibold animate-pulse">Connecting to room...</p>
@@ -1531,7 +1620,7 @@ export default function App() {
   if (roomCode && isRoomFull) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden">
-        <FloatingParticles />
+        <Atmosphere />
         <div className="w-full max-w-md glass-card-strong rounded-3xl p-8 flex flex-col items-center text-center relative z-10 animate-fade-in">
           <div className="w-14 h-14 rounded-full bg-rose-400/10 flex items-center justify-center mb-6">
             <HeartOff className="w-7 h-7 text-rose-400" />
@@ -1555,7 +1644,7 @@ export default function App() {
   if (!nickname) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6 relative overflow-hidden">
-        <FloatingParticles />
+        <Atmosphere />
         <div className="w-full max-w-sm glass-card-strong rounded-3xl p-8 flex flex-col items-center relative z-10 animate-fade-in">
           <h2 className="text-xl font-bold text-white/90 text-center mb-2 font-display">Joining Room</h2>
           <span className="px-3 py-1 bg-amber-400/10 border border-amber-400/20 text-amber-400/80 rounded-full text-xs font-semibold font-mono tracking-tight mb-6">
@@ -1591,10 +1680,10 @@ export default function App() {
 
   // Screen D: Cozy Collaborative Drawing Canvas Screen
   return (
-    <div className="min-h-screen flex flex-col relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 50%, #16213e 100%)' }}>
+    <div className="min-h-screen flex flex-col relative overflow-hidden">
 
       {/* Ambient Background Particles */}
-      <FloatingParticles />
+      <Atmosphere />
 
       {/* 1. Header Area */}
       <header className="flex justify-between items-center px-5 py-3 glass-card border-0 border-b border-white/5 z-20 relative">
@@ -1648,6 +1737,9 @@ export default function App() {
             )}
           </div>
 
+          {/* Day / Evening Toggle */}
+          <ThemeToggle theme={theme} onToggle={toggleTheme} />
+
           {/* Chat Panel Toggle */}
           <button
             onClick={() => setShowChat(!showChat)}
@@ -1685,9 +1777,9 @@ export default function App() {
 
           {/* Daily Prompt Banner */}
           {!hidePrompt && (
-            <div className="absolute top-4 z-20 w-full flex justify-center px-4 animate-fade-in pointer-events-none">
-              <div className="bg-black/40 backdrop-blur-md border border-white/10 rounded-full px-5 py-2 flex items-center gap-3 shadow-lg pointer-events-auto max-w-sm w-full">
-                <Sparkles className="w-4 h-4 text-amber-300 shrink-0" />
+            <div className="absolute top-12 z-20 w-full flex justify-center px-4 animate-fade-in pointer-events-none">
+              <div className="glass-card-strong rounded-full px-5 py-2 flex items-center gap-3 pointer-events-auto max-w-xs w-full">
+                <Sparkles className="w-4 h-4 shrink-0" style={{ color: '#E5A469' }} />
                 <span className="text-xs text-white/80 font-medium truncate flex-grow text-center">
                   {/* eslint-disable-next-line react-hooks/purity -- intentional daily (clock-based) prompt */}
                   {DAILY_PROMPTS[Math.floor(Date.now() / 86400000) % DAILY_PROMPTS.length]}
@@ -1709,11 +1801,14 @@ export default function App() {
           {/* 2. Main Canvas Area */}
           <main className="flex-grow flex items-center justify-center p-3 md:p-5 relative z-10 w-full">
             {/* Canvas Container — Full Bleed, No Polaroid */}
-            <div className="w-full max-w-[min(92vw,62vh)] relative">
-              <div className="w-full aspect-square rounded-2xl overflow-hidden relative bg-white border border-white/10" style={{ boxShadow: '0 0 60px rgba(232,168,124,0.08), 0 8px 32px rgba(0,0,0,0.4)' }}>
+            <div className="paper-frame w-full max-w-[min(92vw,62vh)]">
+              {/* Washi tape holding the sheet to the desk */}
+              <span className="tape tape-tl" aria-hidden="true" />
+              <span className="tape tape-tr" aria-hidden="true" />
+              <div className="paper-canvas w-full aspect-square rounded-2xl overflow-hidden relative">
                 {/* Canvas */}
                 <canvas
-                  ref={canvasRef}
+                  ref={attachCanvas}
                   width={1500}
                   height={1500}
                   onPointerDown={handlePointerDown}
@@ -1731,16 +1826,16 @@ export default function App() {
                   style={{
                     opacity: 0,
                     transform: 'translate(-50%, -50%)',
-                    width: Math.max(activeTool === 'eraser' ? activeEraserSize : activeSize, 4),
-                    height: Math.max(activeTool === 'eraser' ? activeEraserSize : activeSize, 4)
+                    width: Math.max((activeTool === 'eraser' ? activeEraserSize : activeSize) * canvasScale, activeTool === 'eraser' ? 4 : 2),
+                    height: Math.max((activeTool === 'eraser' ? activeEraserSize : activeSize) * canvasScale, activeTool === 'eraser' ? 4 : 2)
                   }}
                 >
                   <div
                     className="rounded-full w-full h-full"
                     style={
                       activeTool === 'eraser'
-                        ? { border: '2px dashed #888', backgroundColor: 'transparent' }
-                        : { backgroundColor: activeColor, border: '1px solid rgba(255, 255, 255, 0.8)', boxShadow: `0 0 4px ${activeColor}80` }
+                        ? { boxSizing: 'border-box', border: '1.5px dashed #888', backgroundColor: 'transparent' }
+                        : { boxSizing: 'border-box', backgroundColor: activeColor, border: '1px solid rgba(255, 255, 255, 0.8)', boxShadow: `0 0 3px ${activeColor}66` }
                     }
                   />
                 </div>
@@ -1757,8 +1852,8 @@ export default function App() {
                         left: `${(p.x / 1500) * 100}%`,
                         top: `${(p.y / 1500) * 100}%`,
                         transform: 'translate(-50%, -50%)',
-                        width: Math.max(cursorSize, 8),
-                        height: Math.max(cursorSize, 8)
+                        width: Math.max(cursorSize * canvasScale, p.activeTool === 'eraser' ? 4 : 2),
+                        height: Math.max(cursorSize * canvasScale, p.activeTool === 'eraser' ? 4 : 2)
                       }}
                     >
                       {/* Pointer brush circle */}
@@ -1766,8 +1861,8 @@ export default function App() {
                         className="rounded-full animate-soft-pulse w-full h-full"
                         style={
                           p.activeTool === 'eraser'
-                            ? { border: '2px dashed white', backdropFilter: 'invert(0.2)' }
-                            : { backgroundColor: p.activeColor || '#C85C50', border: '1px solid white', boxShadow: `0 0 12px ${p.activeColor || '#C85C50'}60` }
+                            ? { boxSizing: 'border-box', border: '1.5px dashed white', backdropFilter: 'invert(0.2)' }
+                            : { boxSizing: 'border-box', backgroundColor: p.activeColor || '#C85C50', border: '1px solid white', boxShadow: `0 0 12px ${p.activeColor || '#C85C50'}60` }
                         }
                       />
                       {/* Name label */}
@@ -1784,7 +1879,7 @@ export default function App() {
 
           {/* 3. Floating Bottom Toolbar */}
           <footer className="w-full p-4 flex flex-col items-center z-20 pb-5">
-            <div className="w-full max-w-xl glass-card rounded-[20px] px-5 py-3.5 flex flex-col gap-3">
+            <div className="w-full max-w-xl glass-card palette-tray rounded-[20px] px-5 py-3.5 flex flex-col gap-3">
 
               <div className="flex flex-wrap items-center justify-between gap-3">
                 {/* Color Palette */}
@@ -1802,7 +1897,7 @@ export default function App() {
                         style={{
                           backgroundColor: col.hex,
                           boxShadow: activeColor === col.hex && activeTool !== 'eraser'
-                            ? `0 0 0 2px #0f0f1a, 0 0 0 4px ${col.hex}, 0 0 14px ${col.hex}50`
+                            ? `0 0 0 2px var(--ring-gap), 0 0 0 4px ${col.hex}, 0 0 14px ${col.hex}50`
                             : 'none'
                         }}
                       >
@@ -2044,9 +2139,10 @@ export default function App() {
                   />
                   <div className="absolute bottom-full left-0 mb-2 z-50 shadow-2xl bg-[#222222] rounded-xl overflow-hidden border border-white/10">
                     <div className="flex justify-end p-2 border-b border-white/5 bg-black/20">
-                      <button 
+                      <button
                         onClick={() => setShowEmojiPicker(false)}
-                        className="p-1 hover:bg-white/10 rounded-full transition text-white/40 hover:text-white cursor-pointer"
+                        className="p-1 hover:bg-white/10 rounded-full transition cursor-pointer"
+                        style={{ color: 'rgba(255, 255, 255, 0.7)' }}
                         title="Close Emojis"
                       >
                         <X className="w-4 h-4" />
