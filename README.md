@@ -11,8 +11,8 @@ CozyCanvas is an intimate, real-time collaborative scrapbook drawing canvas web 
 -  **Cozy Chat Sidebar**: A collapsible chat drawer built right into the viewport to send sweet notes with unread message notifications.
 -  **Intimate Couples Presence**: Heartbeat-based presence system that automatically limits room capacity to **exactly 2 active users** at a time.
 -  **Eraser & Undo**: Pen and Eraser tool switcher featuring instant local erasing feedback (`destination-out`) and stroke undoing/clearing with custom confetti.
--  **Web Configurator**: Connect your own Firebase Firestore database instantly using the on-screen configuration form (saved securely in localStorage).
--  **Admin Dashboard**: Inspect active collaborative rooms, view creation timestamps, and perform cleanups of inactive sessions.
+## UPDATE!!!
+- **Group Drawing are live** : Is not not only limited to 2 people you can have your all group in this fun drawing...
 
 ---
 
