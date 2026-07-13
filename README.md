@@ -1,4 +1,4 @@
-# 🧸 CozyCanvas — Shared Drawing for Couples
+# 🧸 CozyCanvas — Shared Drawing for Friends/Couples.
 
 CozyCanvas is an intimate, real-time collaborative scrapbook drawing canvas web application designed specifically for couples. Featuring a premium dark-mode glassmorphic interface with floating ambient background elements, the application allows couples to doodle, chat, and share creative moments synchronously from anywhere in the world.
 
