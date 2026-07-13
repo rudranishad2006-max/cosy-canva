@@ -1,135 +1,201 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Quicksand:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700;9..144,900&family=Nunito:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap');
 @import "tailwindcss";
 
 @theme {
-  --font-sans: 'Quicksand', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-  --font-display: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  /* Body / UI: warm, rounded humanist. Display: soft old-style serif. Utility: typewriter mono. */
+  --font-sans: 'Nunito', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Fraunces', 'Georgia', 'Times New Roman', serif;
+  --font-mono: 'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+}
+
+/* === PALETTE: "Lamplight" — a warm studio at night ===
+   The room is dim espresso-plum; a desk lamp pools warm ochre light onto one sheet of paper.
+   Pigment accents (terracotta / rose / ochre / sage) double as the app's drawing colors. */
+:root {
+  --night-1: #2A1E22;   /* upper room, nearest the lamp   */
+  --night-2: #241A1D;   /* mid room                        */
+  --night-3: #1A1315;   /* far corners                     */
+  --paper:   #FBF6EE;   /* the drawing sheet               */
+  --ink:     #EFE6D9;   /* warm off-white text on the dark */
+  --ink-dim: rgba(239, 230, 217, 0.42);
+  --terracotta: #C85C50;
+  --rose:       #D4A59A;
+  --ochre:      #E5A469;
+  --sage:       #8FA89B;
+  --lamp:    rgba(232, 168, 124, 0.5);
+  --ring-gap: #241A1D;   /* gap color inside a selected swatch's ring */
 }
 
 /* === BASE === */
+/* Solid dark base on <html> so a transient horizontal overflow (e.g. the chat
+   panel sliding in) can never reveal a white gutter behind the fixed body bg. */
+html {
+  background: var(--night-3);
+  overflow-x: hidden;
+}
+
 body {
   font-family: var(--font-sans);
-  background: linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 50%, #16213e 100%);
+  /* A pool of lamplight up top, cozy darkening into the corners. */
+  background:
+    radial-gradient(115% 80% at 50% -12%, rgba(232, 168, 124, 0.16), transparent 58%),
+    radial-gradient(100% 75% at 50% 118%, rgba(20, 12, 14, 0.55), transparent 60%),
+    linear-gradient(162deg, var(--night-1) 0%, var(--night-2) 46%, var(--night-3) 100%);
+  background-attachment: fixed;
   margin: 0;
   padding: 0;
+  width: 100%;
+  overflow-x: hidden;
   overflow-y: auto;
-  color: #e8e0d8;
+  color: var(--ink);
   min-height: 100vh;
 }
 
-/* === GLASSMORPHISM === */
+/* === ATMOSPHERE: quiet grain + vignette (replaces techy particles) === */
+.atmosphere {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+.atmosphere::before {
+  /* Fine paper grain, barely there. */
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0.05;
+  mix-blend-mode: soft-light;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+.atmosphere::after {
+  /* Vignette to seat the room. */
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(130% 110% at 50% 30%, transparent 52%, rgba(16, 10, 12, 0.42) 100%);
+}
+
+/* === WARM FROSTED PANELS (amber glass, not cold glass) === */
 .glass-card {
-  background: rgba(255, 255, 255, 0.04);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(54, 39, 37, 0.46);
+  backdrop-filter: blur(20px) saturate(1.12);
+  -webkit-backdrop-filter: blur(20px) saturate(1.12);
+  border: 1px solid rgba(232, 168, 124, 0.11);
   box-shadow:
-    0 8px 32px rgba(0, 0, 0, 0.3),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    0 10px 40px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 rgba(255, 240, 225, 0.05);
 }
 
 .glass-card-strong {
-  background: rgba(255, 255, 255, 0.06);
-  backdrop-filter: blur(32px);
-  -webkit-backdrop-filter: blur(32px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(60, 43, 41, 0.62);
+  backdrop-filter: blur(28px) saturate(1.16);
+  -webkit-backdrop-filter: blur(28px) saturate(1.16);
+  border: 1px solid rgba(232, 168, 124, 0.17);
   box-shadow:
-    0 16px 48px rgba(0, 0, 0, 0.4),
-    0 0 80px rgba(232, 168, 124, 0.06),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    0 22px 60px rgba(0, 0, 0, 0.5),
+    0 0 90px rgba(232, 168, 124, 0.06),
+    inset 0 1px 0 rgba(255, 240, 225, 0.07);
 }
 
 .glass-input {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #e8e0d8;
+  background: rgba(255, 246, 238, 0.055);
+  border: 1px solid rgba(232, 168, 124, 0.17);
+  color: var(--ink);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
 }
 
 .glass-input::placeholder {
-  color: rgba(232, 224, 216, 0.3);
+  color: rgba(239, 230, 217, 0.32);
 }
 
 .glass-input:focus {
   outline: none;
-  border-color: rgba(232, 168, 124, 0.4);
-  box-shadow: 0 0 0 3px rgba(232, 168, 124, 0.1), 0 0 20px rgba(232, 168, 124, 0.05);
+  border-color: rgba(232, 168, 124, 0.5);
+  box-shadow: 0 0 0 3px rgba(232, 168, 124, 0.14), 0 0 20px rgba(232, 168, 124, 0.06);
 }
 
-/* === GRADIENT TEXT === */
+/* === GRADIENT TEXT (warm candlelight) === */
 .gradient-text {
-  background: linear-gradient(135deg, #e8a87c, #d4a59a, #e09f67);
+  background: linear-gradient(120deg, #F1C591, #E5936B 52%, #C85C50);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
-/* === GRADIENT BUTTON === */
+/* === GRADIENT BUTTON (warm ember) === */
 .btn-gradient {
-  background: linear-gradient(135deg, #e8a87c, #d4a59a);
-  color: white;
-  font-weight: 600;
+  background: linear-gradient(135deg, #E9A46C, #C85C50);
+  color: #fff;
+  font-weight: 700;
   border: none;
   position: relative;
   overflow: hidden;
-  transition: all 0.3s ease;
-  box-shadow: 0 4px 24px rgba(232, 168, 124, 0.25);
+  transition: transform 0.25s ease, box-shadow 0.25s ease, filter 0.25s ease;
+  box-shadow: 0 6px 22px rgba(200, 92, 80, 0.32);
 }
 
 .btn-gradient:hover {
   transform: translateY(-1px);
-  box-shadow: 0 8px 32px rgba(232, 168, 124, 0.35);
-  filter: brightness(1.05);
+  box-shadow: 0 10px 30px rgba(200, 92, 80, 0.42);
+  filter: brightness(1.04);
 }
 
 .btn-gradient:active {
   transform: translateY(0);
 }
 
-/* === FLOATING PARTICLES === */
-@keyframes float-particle {
-  0%, 100% {
-    transform: translateY(0) translateX(0) scale(1);
-    opacity: 0.3;
-  }
-  25% {
-    transform: translateY(-30px) translateX(15px) scale(1.1);
-    opacity: 0.6;
-  }
-  50% {
-    transform: translateY(-20px) translateX(-10px) scale(0.9);
-    opacity: 0.4;
-  }
-  75% {
-    transform: translateY(-40px) translateX(20px) scale(1.05);
-    opacity: 0.5;
-  }
+/* === SIGNATURE: paper taped to the desk, under a pool of lamplight === */
+.paper-frame {
+  position: relative;
 }
-
-@keyframes float-particle-slow {
-  0%, 100% {
-    transform: translateY(0) translateX(0);
-    opacity: 0.15;
-  }
-  50% {
-    transform: translateY(-60px) translateX(-30px);
-    opacity: 0.35;
-  }
-}
-
-.particle {
+.paper-frame::before {
+  /* Warm lamplight bleeding out from behind the sheet. */
+  content: '';
   position: absolute;
-  border-radius: 50%;
+  inset: -14%;
+  border-radius: 40px;
+  background: radial-gradient(closest-side, rgba(232, 168, 124, 0.24), rgba(232, 168, 124, 0.06) 62%, transparent 78%);
+  filter: blur(26px);
+  z-index: 0;
   pointer-events: none;
-  animation: float-particle 8s ease-in-out infinite;
 }
 
-.particle-slow {
+.paper-canvas {
+  position: relative;
+  z-index: 1;
+  background: var(--paper);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow:
+    0 2px 3px rgba(0, 0, 0, 0.22),
+    0 22px 48px rgba(0, 0, 0, 0.46);
+}
+
+/* Washi tape holding the sheet down. */
+.tape {
   position: absolute;
-  border-radius: 50%;
+  z-index: 3;
+  width: 72px;
+  height: 24px;
+  background: linear-gradient(180deg, rgba(235, 216, 184, 0.82), rgba(212, 188, 148, 0.68));
+  box-shadow: 0 2px 7px rgba(0, 0, 0, 0.28);
   pointer-events: none;
-  animation: float-particle-slow 12s ease-in-out infinite;
+}
+.tape::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.14) 0 7px, transparent 7px 14px);
+}
+.tape-tl { top: -11px; left: 14px; transform: rotate(-6deg); }
+.tape-tr { top: -11px; right: 14px; transform: rotate(5deg); }
+
+/* === PALETTE TRAY: a shallow ceramic tray the tools rest in === */
+.palette-tray {
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 240, 225, 0.08),
+    inset 0 -10px 22px rgba(0, 0, 0, 0.22);
 }
 
 /* === HEART GLOW === */
@@ -139,7 +205,7 @@ body {
     transform: scale(1);
   }
   50% {
-    filter: drop-shadow(0 0 20px rgba(232, 168, 124, 0.7));
+    filter: drop-shadow(0 0 20px rgba(232, 168, 124, 0.72));
     transform: scale(1.08);
   }
 }
@@ -148,32 +214,20 @@ body {
   animation: heart-glow 2.5s ease-in-out infinite;
 }
 
-/* === SOFT PULSE === */
+/* === SOFT PULSE (partner cursors) === */
 @keyframes softPulse {
-  0%, 100% {
-    transform: scale(1);
-    opacity: 1;
-  }
-  50% {
-    transform: scale(1.3);
-    opacity: 0.6;
-  }
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.3); opacity: 0.6; }
 }
 
 .animate-soft-pulse {
   animation: softPulse 2s infinite ease-in-out;
 }
 
-/* === SLIDE IN === */
+/* === SLIDE IN (chat) === */
 @keyframes slideInRight {
-  from {
-    transform: translateX(100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
 }
 
 .animate-slide-in-right {
@@ -195,20 +249,27 @@ body {
   cursor: none;
 }
 
-/* === CUSTOM SCROLLBAR (dark) === */
+/* === KEYBOARD FOCUS (quality floor) === */
+:focus-visible {
+  outline: 2px solid rgba(232, 168, 124, 0.75);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* === CUSTOM SCROLLBAR (warm) === */
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(232, 168, 124, 0.15);
+  background: rgba(232, 168, 124, 0.2);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(232, 168, 124, 0.35);
+  background: rgba(232, 168, 124, 0.4);
 }
 
 /* === CUSTOM RANGE INPUT === */
@@ -219,13 +280,13 @@ input[type="range"] {
 }
 
 input[type="range"]::-webkit-slider-runnable-track {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 240, 225, 0.1);
   height: 4px;
   border-radius: 9999px;
 }
 
 input[type="range"]::-moz-range-track {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 240, 225, 0.1);
   height: 4px;
   border-radius: 9999px;
 }
@@ -235,24 +296,235 @@ input[type="range"]::-webkit-slider-thumb {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #e8a87c, #d4a59a);
-  border: 2px solid rgba(255, 255, 255, 0.15);
+  background: linear-gradient(135deg, #E9A46C, #C85C50);
+  border: 2px solid rgba(255, 246, 238, 0.85);
   margin-top: -6px;
   cursor: pointer;
-  box-shadow: 0 2px 10px rgba(232, 168, 124, 0.3);
+  box-shadow: 0 2px 10px rgba(200, 92, 80, 0.35);
   transition: box-shadow 0.2s ease;
 }
 
 input[type="range"]::-webkit-slider-thumb:hover {
-  box-shadow: 0 2px 16px rgba(232, 168, 124, 0.5);
+  box-shadow: 0 2px 16px rgba(200, 92, 80, 0.55);
 }
 
 input[type="range"]::-moz-range-thumb {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #e8a87c, #d4a59a);
-  border: 2px solid rgba(255, 255, 255, 0.15);
+  background: linear-gradient(135deg, #E9A46C, #C85C50);
+  border: 2px solid rgba(255, 246, 238, 0.85);
   cursor: pointer;
-  box-shadow: 0 2px 10px rgba(232, 168, 124, 0.3);
+  box-shadow: 0 2px 10px rgba(200, 92, 80, 0.35);
+}
+
+/* ============================================================
+   CUTE AMBIENT SCENE — drifting hearts, twinkling stars (evening),
+   soft clouds (day), and a moon/sun glow. Quiet and slow so it warms
+   the room without competing with the canvas.
+   ============================================================ */
+.cozy-scene {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;   /* clip drifting elements so they never grow the page */
+}
+
+/* Moon (evening) / sun (day) glow, top-right */
+.celestial {
+  position: absolute;
+  top: 7%;
+  right: 9%;
+  border-radius: 50%;
+  filter: blur(2px);
+}
+.celestial-moon {
+  width: 66px;
+  height: 66px;
+  background: radial-gradient(circle at 36% 34%, #FBEFD6, #E7C589 72%);
+  box-shadow: 0 0 60px 8px rgba(233, 200, 146, 0.4);
+}
+.celestial-sun {
+  width: 92px;
+  height: 92px;
+  background: radial-gradient(circle at 40% 40%, #FFF6DC, #F6C468 70%);
+  box-shadow: 0 0 90px 14px rgba(246, 196, 104, 0.5);
+}
+
+/* Drifting hearts */
+.drift-heart {
+  position: absolute;
+  opacity: 0;
+  animation-name: heart-rise;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  will-change: transform, opacity;
+}
+@keyframes heart-rise {
+  0%   { transform: translateY(24px) rotate(-6deg) scale(0.9); opacity: 0; }
+  18%  { opacity: 0.5; }
+  50%  { transform: translateY(-46px) rotate(6deg) scale(1); }
+  82%  { opacity: 0.34; }
+  100% { transform: translateY(-104px) rotate(-4deg) scale(0.94); opacity: 0; }
+}
+
+/* Twinkling 4-point sparkles (evening) */
+.star {
+  position: absolute;
+  background: #F3D9AE;
+  clip-path: polygon(50% 0, 61% 39%, 100% 50%, 61% 61%, 50% 100%, 39% 61%, 0 50%, 39% 39%);
+  opacity: 0.2;
+  animation: twinkle 4.5s ease-in-out infinite;
+}
+@keyframes twinkle {
+  0%, 100% { opacity: 0.12; transform: scale(0.7); }
+  50%      { opacity: 0.85; transform: scale(1.15); }
+}
+
+/* Soft clouds drifting across (day) */
+.cloud {
+  position: absolute;
+  height: 26px;
+  border-radius: 100px;
+  background: rgba(255, 255, 255, 0.62);
+  filter: blur(7px);
+  opacity: 0;
+  animation-name: cloud-drift;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  will-change: transform, opacity;
+}
+@keyframes cloud-drift {
+  0%   { transform: translateX(-24vw); opacity: 0; }
+  12%  { opacity: 0.7; }
+  88%  { opacity: 0.7; }
+  100% { transform: translateX(120vw); opacity: 0; }
+}
+
+/* Theme-scoped visibility of the celestial + weather elements */
+[data-theme="day"] .evening-only { display: none; }
+:root:not([data-theme="day"]) .day-only { display: none; }
+
+/* ============================================================
+   DAY THEME — a warm daylight studio. Scoped to [data-theme="day"]
+   so the default evening theme is left pixel-for-pixel untouched.
+   ============================================================ */
+:root[data-theme="day"] { --ring-gap: #F7EFE0; }
+
+[data-theme="day"] html { background: #EAD9BE; }
+
+[data-theme="day"] body {
+  /* Warm sun spilling from the top-right onto parchment. */
+  background:
+    radial-gradient(120% 78% at 80% -8%, rgba(255, 214, 150, 0.55), transparent 54%),
+    radial-gradient(100% 80% at 50% 120%, rgba(214, 188, 150, 0.32), transparent 60%),
+    linear-gradient(165deg, #FAF3E6 0%, #F2E7D2 55%, #EAD9BE 100%);
+  color: #4A352B;
+}
+
+[data-theme="day"] .atmosphere::before { opacity: 0.04; }
+[data-theme="day"] .atmosphere::after {
+  background: radial-gradient(130% 110% at 50% 30%, transparent 55%, rgba(120, 85, 60, 0.16) 100%);
+}
+
+[data-theme="day"] .glass-card {
+  background: rgba(255, 251, 243, 0.62);
+  border: 1px solid rgba(120, 85, 60, 0.14);
+  box-shadow: 0 10px 34px rgba(120, 85, 60, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+[data-theme="day"] .glass-card-strong {
+  background: rgba(255, 251, 243, 0.78);
+  border: 1px solid rgba(120, 85, 60, 0.18);
+  box-shadow: 0 22px 54px rgba(120, 85, 60, 0.18), 0 0 60px rgba(246, 197, 106, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+[data-theme="day"] .glass-input {
+  background: rgba(90, 65, 45, 0.06);
+  border: 1px solid rgba(120, 85, 60, 0.22);
+  color: #4A352B;
+}
+[data-theme="day"] .glass-input::placeholder { color: rgba(74, 53, 43, 0.45); }
+[data-theme="day"] .glass-input:focus {
+  border-color: rgba(200, 92, 80, 0.5);
+  box-shadow: 0 0 0 3px rgba(200, 92, 80, 0.12);
+}
+
+[data-theme="day"] .gradient-text {
+  background: linear-gradient(120deg, #D97742, #C0392B);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+[data-theme="day"] .btn-gradient { box-shadow: 0 6px 20px rgba(200, 92, 80, 0.28); }
+
+[data-theme="day"] .paper-frame::before {
+  background: radial-gradient(closest-side, rgba(246, 197, 106, 0.35), rgba(246, 197, 106, 0.08) 62%, transparent 78%);
+}
+[data-theme="day"] .paper-canvas {
+  border-color: rgba(120, 85, 60, 0.14);
+  box-shadow: 0 2px 3px rgba(120, 85, 60, 0.18), 0 22px 46px rgba(120, 85, 60, 0.2);
+}
+[data-theme="day"] .tape {
+  background: linear-gradient(180deg, rgba(212, 165, 154, 0.72), rgba(200, 140, 128, 0.6));
+  box-shadow: 0 2px 7px rgba(120, 85, 60, 0.22);
+}
+[data-theme="day"] .palette-tray {
+  box-shadow: 0 14px 30px rgba(120, 85, 60, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.6), inset 0 -10px 22px rgba(120, 85, 60, 0.08);
+}
+[data-theme="day"] input[type="range"]::-webkit-slider-runnable-track { background: rgba(74, 53, 43, 0.14); }
+[data-theme="day"] input[type="range"]::-moz-range-track { background: rgba(74, 53, 43, 0.14); }
+
+/* Remap the app's white-on-dark utilities to warm ink on light.
+   Only the semi-transparent variants are remapped; solid `text-white`
+   stays white because it only ever sits on colored/dark chips. */
+[data-theme="day"] .text-white\/90 { color: rgb(52 38 30 / 0.96) !important; }
+[data-theme="day"] .text-white\/80 { color: rgb(54 39 31 / 0.9) !important; }
+[data-theme="day"] .text-white\/70 { color: rgb(58 42 33 / 0.82) !important; }
+[data-theme="day"] .text-white\/60 { color: rgb(64 47 37 / 0.74) !important; }
+[data-theme="day"] .text-white\/50 { color: rgb(70 51 41 / 0.66) !important; }
+[data-theme="day"] .text-white\/40 { color: rgb(74 54 43 / 0.6) !important; }
+[data-theme="day"] .text-white\/35 { color: rgb(78 57 46 / 0.56) !important; }
+[data-theme="day"] .text-white\/30 { color: rgb(82 60 48 / 0.52) !important; }
+[data-theme="day"] .text-white\/25 { color: rgb(86 63 51 / 0.48) !important; }
+[data-theme="day"] .text-white\/20 { color: rgb(90 66 54 / 0.44) !important; }
+[data-theme="day"] .text-white\/15 { color: rgb(94 70 57 / 0.4) !important; }
+
+[data-theme="day"] .hover\:text-white\/80:hover { color: rgb(52 38 30 / 0.92) !important; }
+[data-theme="day"] .hover\:text-white\/60:hover { color: rgb(58 42 33 / 0.82) !important; }
+[data-theme="day"] .hover\:text-white\/50:hover { color: rgb(64 47 37 / 0.72) !important; }
+
+[data-theme="day"] .bg-white\/40 { background-color: rgb(74 53 43 / 0.4) !important; }
+[data-theme="day"] .bg-white\/10 { background-color: rgb(74 53 43 / 0.08) !important; }
+[data-theme="day"] .bg-white\/5 { background-color: rgb(74 53 43 / 0.05) !important; }
+[data-theme="day"] .bg-white\/\[0\.08\] { background-color: rgb(74 53 43 / 0.07) !important; }
+[data-theme="day"] .bg-white\/\[0\.04\] { background-color: rgb(74 53 43 / 0.05) !important; }
+[data-theme="day"] .bg-white\/\[0\.03\] { background-color: rgb(74 53 43 / 0.04) !important; }
+
+[data-theme="day"] .hover\:bg-white\/20:hover { background-color: rgb(74 53 43 / 0.14) !important; }
+[data-theme="day"] .hover\:bg-white\/10:hover { background-color: rgb(74 53 43 / 0.1) !important; }
+[data-theme="day"] .hover\:bg-white\/5:hover { background-color: rgb(74 53 43 / 0.06) !important; }
+[data-theme="day"] .hover\:bg-white\/\[0\.08\]:hover { background-color: rgb(74 53 43 / 0.08) !important; }
+[data-theme="day"] .hover\:bg-white\/\[0\.05\]:hover { background-color: rgb(74 53 43 / 0.06) !important; }
+
+[data-theme="day"] .border-white\/20 { border-color: rgb(74 53 43 / 0.2) !important; }
+[data-theme="day"] .border-white\/10 { border-color: rgb(74 53 43 / 0.14) !important; }
+[data-theme="day"] .border-white\/\[0\.08\] { border-color: rgb(74 53 43 / 0.12) !important; }
+[data-theme="day"] .border-white\/\[0\.06\] { border-color: rgb(74 53 43 / 0.1) !important; }
+[data-theme="day"] .border-white\/5 { border-color: rgb(74 53 43 / 0.08) !important; }
+[data-theme="day"] .divide-white\/5 > :not([hidden]) ~ :not([hidden]) { border-color: rgb(74 53 43 / 0.08) !important; }
+
+/* === REDUCED MOTION === */
+@media (prefers-reduced-motion: reduce) {
+  .animate-heart-glow,
+  .animate-soft-pulse,
+  .animate-slide-in-right,
+  .animate-fade-in,
+  .drift-heart,
+  .star,
+  .cloud {
+    animation: none !important;
+  }
+  .drift-heart { opacity: 0.28; }   /* keep a few static hearts, no motion */
+  .cloud { opacity: 0.5; }
+  .btn-gradient { transition: none; }
+  html { scroll-behavior: auto; }
 }
