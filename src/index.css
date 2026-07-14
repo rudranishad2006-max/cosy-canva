@@ -24,6 +24,7 @@
   --sage:       #8FA89B;
   --lamp:    rgba(232, 168, 124, 0.5);
   --ring-gap: #241A1D;   /* gap color inside a selected swatch's ring */
+  --avatar-ring: #2a2023; /* separates overlapping presence avatars (~header bg) */
 }
 
 /* === BASE === */
@@ -340,7 +341,12 @@ input[type="range"]::-moz-range-thumb {
 .celestial-moon {
   width: 66px;
   height: 66px;
-  background: radial-gradient(circle at 36% 34%, #FBEFD6, #E7C589 72%);
+  /* little craters layered over the warm glow */
+  background:
+    radial-gradient(circle at 63% 40%, rgba(196, 162, 112, 0.55) 0 3px, transparent 3.6px),
+    radial-gradient(circle at 42% 60%, rgba(196, 162, 112, 0.45) 0 2.4px, transparent 3px),
+    radial-gradient(circle at 56% 70%, rgba(196, 162, 112, 0.38) 0 1.8px, transparent 2.4px),
+    radial-gradient(circle at 36% 34%, #FBEFD6, #E7C589 72%);
   box-shadow: 0 0 60px 8px rgba(233, 200, 146, 0.4);
 }
 .celestial-sun {
@@ -408,7 +414,7 @@ input[type="range"]::-moz-range-thumb {
    DAY THEME — a warm daylight studio. Scoped to [data-theme="day"]
    so the default evening theme is left pixel-for-pixel untouched.
    ============================================================ */
-:root[data-theme="day"] { --ring-gap: #F7EFE0; }
+:root[data-theme="day"] { --ring-gap: #F7EFE0; --avatar-ring: #f3ead9; }
 
 [data-theme="day"] html { background: #EAD9BE; }
 

@@ -21,7 +21,9 @@ import {
   Download,
   Smile,
   Sun,
-  Moon
+  Moon,
+  Square,
+  Circle
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import EmojiPicker from 'emoji-picker-react';
@@ -64,6 +66,15 @@ const DAILY_PROMPTS = [
   "Draw your perfect reading nook",
   "Sketch a friendly ghost doing chores",
   "Draw an animal wearing a tiny hat"
+];
+
+// Gentle "leave room for your person" nudges, shown on the paper while it's still sparse.
+const COLLAB_HINTS = [
+  "psst… leave a little corner for them",
+  "psst… start it, they'll finish it",
+  "psst… draw the sky, let them do the ground",
+  "psst… add one thing and pass it back",
+  "psst… your turn — they're watching"
 ];
 
 const generateRoomCode = () => {
@@ -375,7 +386,9 @@ export default function App() {
   const [presenceLoaded, setPresenceLoaded] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
-  const [activeTool, setActiveTool] = useState('pen'); // 'pen' | 'eraser'
+  const [activeTool, setActiveTool] = useState('pen'); // 'pen' | 'eraser' | 'shape'
+  const [activeShape, setActiveShape] = useState('rect'); // 'rect' | 'ellipse'
+  const [nudge, setNudge] = useState(null); // { from, at } — a partner's incoming "thinking of you"
   const [redoStack, setRedoStack] = useState([]);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
 
@@ -671,9 +684,10 @@ export default function App() {
       activeSize,
       activeEraserSize,
       activeTool,
+      activeShape,
       lastActive: Date.now()
     }, { merge: true }).catch(() => { /* heartbeat will (re)create the doc */ });
-  }, [db, roomCode, userId, presenceLoaded, isRoomFull, activeColor, activeSize, activeEraserSize, activeTool]);
+  }, [db, roomCode, userId, presenceLoaded, isRoomFull, activeColor, activeSize, activeEraserSize, activeTool, activeShape]);
 
   // DB Sync 5: Listen to Partner Presence
   useEffect(() => {
@@ -727,11 +741,73 @@ export default function App() {
     }).catch(() => {});
   };
 
+  // Send a nudge: bump a timestamp on our own presence doc. Partners watch this
+  // field and greet a new value with a heart burst + a little "thinking of you" toast.
+  const seenNudgesRef = useRef({});
+  const sendNudge = useCallback(() => {
+    if (!db || !roomCode || !userId) return;
+    const presenceRef = doc(db, 'rooms', roomCode, 'presence', userId);
+    updateDoc(presenceRef, { nudge: Date.now(), lastActive: Date.now() }).catch(() => {});
+    triggerHeartConfetti(); // instant local feedback for the sender
+  }, [db, roomCode, userId]);
+
+  useEffect(() => {
+    activePresences.forEach(p => {
+      if (!p.nudge) return;
+      const seen = seenNudgesRef.current[p.userId];
+      if (seen === undefined) {
+        seenNudgesRef.current[p.userId] = p.nudge; // baseline; don't fire on first sight
+      } else if (p.nudge > seen) {
+        seenNudgesRef.current[p.userId] = p.nudge;
+        setNudge({ from: p.name, at: Date.now() });
+        triggerHeartConfetti();
+      }
+    });
+  }, [activePresences]);
+
+  useEffect(() => {
+    if (!nudge) return;
+    const t = setTimeout(() => setNudge(null), 3200);
+    return () => clearTimeout(t);
+  }, [nudge]);
+
   // 5. Canvas Drawing Engine
   const drawStroke = (ctx, stroke) => {
     if (!stroke.points || stroke.points.length === 0) return;
+
+    // Shapes (rectangle / ellipse): two anchor points, an outlined figure between them.
+    if (stroke.type === 'shape') {
+      const a = stroke.points[0];
+      const b = stroke.points[stroke.points.length - 1];
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.strokeStyle = stroke.color;
+      ctx.lineWidth = stroke.size;
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      if (stroke.shapeType === 'ellipse') {
+        const cx = (a.x + b.x) / 2;
+        const cy = (a.y + b.y) / 2;
+        ctx.ellipse(cx, cy, Math.abs(b.x - a.x) / 2, Math.abs(b.y - a.y) / 2, 0, 0, Math.PI * 2);
+      } else {
+        const x = Math.min(a.x, b.x);
+        const y = Math.min(a.y, b.y);
+        const w = Math.abs(b.x - a.x);
+        const h = Math.abs(b.y - a.y);
+        const r = Math.min(24, w / 2, h / 2);
+        ctx.moveTo(x + r, y);
+        ctx.arcTo(x + w, y, x + w, y + h, r);
+        ctx.arcTo(x + w, y + h, x, y + h, r);
+        ctx.arcTo(x, y + h, x, y, r);
+        ctx.arcTo(x, y, x + w, y, r);
+        ctx.closePath();
+      }
+      ctx.stroke();
+      return;
+    }
+
     ctx.beginPath();
-    
+
     // Support transparent erasing
     if (stroke.isEraser) {
       ctx.globalCompositeOperation = 'destination-out';
@@ -779,25 +855,45 @@ export default function App() {
     // Draw all active strokes (in progress)
     activePresences.forEach(p => {
       if (p.isDrawing && p.currentPoints && p.currentPoints.length > 1) {
-        drawStroke(ctx, {
-          color: p.activeColor || '#C85C50',
-          size: p.activeTool === 'eraser' ? (p.activeEraserSize || 15) : (p.activeSize || 5),
-          points: p.currentPoints,
-          isEraser: p.activeTool === 'eraser'
-        });
+        if (p.activeTool === 'shape') {
+          drawStroke(ctx, {
+            type: 'shape',
+            shapeType: p.activeShape || 'rect',
+            color: p.activeColor || '#C85C50',
+            size: p.activeSize || 5,
+            points: p.currentPoints
+          });
+        } else {
+          drawStroke(ctx, {
+            color: p.activeColor || '#C85C50',
+            size: p.activeTool === 'eraser' ? (p.activeEraserSize || 15) : (p.activeSize || 5),
+            points: p.currentPoints,
+            isEraser: p.activeTool === 'eraser'
+          });
+        }
       }
     });
 
     // Draw local active stroke (in progress)
     if (currentStrokePoints.current.length > 1) {
-      drawStroke(ctx, {
-        color: activeColor,
-        size: activeTool === 'eraser' ? activeEraserSize : activeSize,
-        points: currentStrokePoints.current,
-        isEraser: activeTool === 'eraser'
-      });
+      if (activeTool === 'shape') {
+        drawStroke(ctx, {
+          type: 'shape',
+          shapeType: activeShape,
+          color: activeColor,
+          size: activeSize,
+          points: currentStrokePoints.current
+        });
+      } else {
+        drawStroke(ctx, {
+          color: activeColor,
+          size: activeTool === 'eraser' ? activeEraserSize : activeSize,
+          points: currentStrokePoints.current,
+          isEraser: activeTool === 'eraser'
+        });
+      }
     }
-  }, [visibleStrokes, activePresences, activeColor, activeSize, activeEraserSize, activeTool]);
+  }, [visibleStrokes, activePresences, activeColor, activeSize, activeEraserSize, activeTool, activeShape]);
 
   // Redraw when strokes, partner status, or settings change
   useEffect(() => {
@@ -833,19 +929,21 @@ export default function App() {
       cursorRef.current.style.top = `${(y / 1500) * 100}%`;
     }
 
-    // Trigger instant canvas refresh for starting dot
-    const ctx = canvas.getContext('2d');
-    ctx.beginPath();
-    if (activeTool === 'eraser') {
-      ctx.globalCompositeOperation = 'destination-out';
-      ctx.fillStyle = 'rgba(0,0,0,1)';
-    } else {
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.fillStyle = activeColor;
+    // Freehand/eraser lay down a starting dot; shapes rubber-band from the anchor instead.
+    if (activeTool !== 'shape') {
+      const ctx = canvas.getContext('2d');
+      ctx.beginPath();
+      if (activeTool === 'eraser') {
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.fillStyle = 'rgba(0,0,0,1)';
+      } else {
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.fillStyle = activeColor;
+      }
+      ctx.arc(x, y, (activeTool === 'eraser' ? activeEraserSize : activeSize) / 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalCompositeOperation = 'source-over'; // Reset
     }
-    ctx.arc(x, y, (activeTool === 'eraser' ? activeEraserSize : activeSize) / 2, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.globalCompositeOperation = 'source-over'; // Reset
 
     updatePresenceCursorImmediate(x, y, true, [{ x, y }]);
   };
@@ -866,7 +964,14 @@ export default function App() {
       cursorRef.current.style.top = `${(y / 1500) * 100}%`;
     }
 
-    if (isDrawing) {
+    if (isDrawing && activeTool === 'shape') {
+      // Shape preview: keep only the anchor + current point, and redraw the whole
+      // canvas so the rubber-banded figure follows the cursor.
+      const start = currentStrokePoints.current[0] || { x, y };
+      currentStrokePoints.current = [start, { x, y }];
+      drawCanvas();
+      updatePresenceCursor(x, y, true, currentStrokePoints.current);
+    } else if (isDrawing) {
       const newPoint = { x, y };
       currentStrokePoints.current.push(newPoint);
 
@@ -916,13 +1021,33 @@ export default function App() {
     const points = currentStrokePoints.current;
     currentStrokePoints.current = [];
 
-    if (points.length > 1) {
+    if (activeTool === 'shape' && points.length >= 2) {
+      const a = points[0];
+      const b = points[points.length - 1];
+      // Ignore a tiny drag that was really just a tap.
+      if (Math.hypot(b.x - a.x, b.y - a.y) > 6) {
+        setRedoStack([]);
+        const strokeId = `stroke-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+        const strokeRef = doc(db, 'rooms', roomCode, 'strokes', strokeId);
+        setDoc(strokeRef, {
+          id: strokeId,
+          author: nickname,
+          type: 'shape',
+          shapeType: activeShape,
+          color: activeColor,
+          size: activeSize,
+          points: [a, b],
+          isEraser: false,
+          timestamp: serverTimestamp()
+        }).catch(err => console.error("Error saving stroke:", err));
+      }
+    } else if (activeTool !== 'shape' && points.length > 1) {
       // Clear redoStack on new stroke
       setRedoStack([]);
-      
+
       const strokeId = `stroke-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
       const strokeRef = doc(db, 'rooms', roomCode, 'strokes', strokeId);
-      
+
       // Save complete stroke
       setDoc(strokeRef, {
         id: strokeId,
@@ -1482,46 +1607,65 @@ export default function App() {
           )}
 
           <div className="w-full max-w-2xl relative z-10 animate-fade-in flex flex-col items-center">
-            {/* Glowing Heart Logo */}
-            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-rose-400/20 to-amber-400/20 flex items-center justify-center mb-6 relative">
-              <Heart className="w-10 h-10 text-rose-400 fill-rose-400/30 animate-heart-glow" />
-              <div className="absolute inset-0 rounded-full bg-gradient-to-br from-rose-400/10 to-transparent blur-xl" />
+            {/* Glowing jar-of-hearts logo */}
+            <div className="relative mb-6 flex items-center justify-center">
+              <div className="absolute w-24 h-24 rounded-full bg-rose-400/20 blur-2xl" />
+              <svg width="72" height="92" viewBox="0 0 64 84" fill="none" className="relative animate-soft-pulse">
+                <rect x="17" y="3" width="30" height="8" rx="3" fill="#E6D5B8" />
+                <rect x="20" y="10" width="24" height="5" rx="2" fill="#D8C6A6" />
+                <rect x="15" y="15" width="34" height="62" rx="12" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.2)" strokeWidth="1.5" />
+                <rect x="20" y="21" width="3.5" height="38" rx="1.75" fill="rgba(255,255,255,0.12)" />
+                <path d="M32 56 C32 56 19 47 19 38 C19 32.5 23.5 30 27 32.5 C29 34 31 37 32 39.5 C33 37 35 34 37 32.5 C40.5 30 45 32.5 45 38 C45 47 32 56 32 56 Z" fill="#F43F5E" className="animate-heart-glow" />
+              </svg>
             </div>
 
-            <h1 className="text-4xl font-extrabold gradient-text text-center tracking-tight mb-2 font-display">CozyCanvas</h1>
+            <h1 className="text-5xl font-extrabold gradient-text text-center tracking-tight mb-3 font-display">CozyCanvas</h1>
+            <p className="text-rose-300/80 text-center text-lg italic font-display mb-2">draw together, stay close</p>
             <p className="text-white/35 text-center text-sm mb-10 max-w-md mx-auto">
-              Choose your canvas mode. Draw together in a cozy space.
+              Pick a room and pull up a chair — the paper's already taped down.
             </p>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 w-full">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 w-full items-stretch">
               {/* Couple Room Card */}
               <button
                 onClick={() => setSelectedMode('couple')}
-                className="glass-card-strong p-8 rounded-3xl flex flex-col items-start hover:-translate-y-1 hover:bg-white/[0.05] transition duration-300 text-left border border-white/5 hover:border-rose-400/30 group cursor-pointer"
+                className="glass-card-strong p-7 rounded-3xl flex flex-col items-start text-left border border-white/5 hover:border-rose-400/30 hover:-translate-y-1 hover:bg-white/[0.04] transition duration-300 group cursor-pointer relative"
               >
-                <div className="w-12 h-12 rounded-full bg-rose-400/10 flex items-center justify-center mb-5 group-hover:scale-110 transition">
-                  <Heart className="w-6 h-6 text-rose-400" />
+                <span className="absolute top-6 right-6 text-[9px] font-bold tracking-[0.14em] text-rose-300/70 border border-dashed border-rose-300/30 rounded-full px-2.5 py-1">JUST YOU TWO</span>
+                <div className="w-12 h-12 rounded-2xl bg-rose-400/10 border border-rose-400/15 flex items-center justify-center mb-5 group-hover:scale-110 transition">
+                  <Heart className="w-6 h-6 text-rose-400 fill-rose-400/30" />
                 </div>
-                <h3 className="text-xl font-bold text-white/90 mb-2 font-display tracking-tight">Couple Room</h3>
-                <p className="text-white/40 text-sm leading-relaxed">
-                  The classic CozyCanvas experience — just you and your partner.
+                <h3 className="text-2xl font-bold text-white/90 mb-2 font-display tracking-tight">Couple Room</h3>
+                <p className="text-white/50 text-sm leading-relaxed mb-6">
+                  The classic CozyCanvas — one sheet of paper, two brushes, and a nightly prompt to keep your streak warm.
                 </p>
+                <span className="mt-auto btn-gradient text-white font-semibold text-sm rounded-xl px-5 py-2.5 flex items-center gap-1.5">
+                  Open our room →
+                </span>
               </button>
 
               {/* Group Room Card */}
               <button
                 onClick={() => setSelectedMode('group')}
-                className="glass-card-strong p-8 rounded-3xl flex flex-col items-start hover:-translate-y-1 hover:bg-white/[0.05] transition duration-300 text-left border border-white/5 hover:border-amber-400/30 group cursor-pointer"
+                className="glass-card-strong p-7 rounded-3xl flex flex-col items-start text-left border border-white/5 hover:border-amber-400/30 hover:-translate-y-1 hover:bg-white/[0.04] transition duration-300 group cursor-pointer relative"
               >
-                <div className="w-12 h-12 rounded-full bg-amber-400/10 flex items-center justify-center mb-5 group-hover:scale-110 transition">
+                <span className="absolute top-6 right-6 text-[9px] font-bold tracking-[0.14em] text-amber-300/70 border border-dashed border-amber-300/30 rounded-full px-2.5 py-1">UP TO 6 FRIENDS</span>
+                <div className="w-12 h-12 rounded-2xl bg-amber-400/10 border border-amber-400/15 flex items-center justify-center mb-5 group-hover:scale-110 transition">
                   <Users className="w-6 h-6 text-amber-400" />
                 </div>
-                <h3 className="text-xl font-bold text-white/90 mb-2 font-display tracking-tight">Invite the group</h3>
-                <p className="text-white/40 text-sm leading-relaxed">
-                  Draw and chat together with up to 5 of your favorite people.
+                <h3 className="text-2xl font-bold text-white/90 mb-2 font-display tracking-tight">Invite the Group</h3>
+                <p className="text-white/50 text-sm leading-relaxed mb-6">
+                  Doodle and chat with up to five of your favorite people. Everyone gets a color, nobody gets the eraser.
                 </p>
+                <span className="mt-auto text-amber-300/90 font-semibold text-sm rounded-xl px-5 py-2.5 flex items-center gap-1.5 border border-amber-400/25 group-hover:bg-amber-400/10 transition">
+                  Start a group canvas →
+                </span>
               </button>
             </div>
+
+            <p className="text-white/25 text-xs mt-8 text-center">
+              made for late-night doodles <span className="text-rose-400/70">♥</span> no accounts, just a link
+            </p>
           </div>
         </div>
       );
@@ -1696,6 +1840,18 @@ export default function App() {
       {/* Ambient Background Particles */}
       <Atmosphere />
 
+      {/* Incoming nudge toast */}
+      {nudge && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 pointer-events-none animate-fade-in">
+          <div className="glass-card-strong rounded-full px-4 py-2 flex items-center gap-2 shadow-xl">
+            <Heart className="w-4 h-4 text-rose-400 fill-rose-400/50 animate-heart-glow" />
+            <span className="text-sm text-white/80">
+              <span className="font-semibold text-white/90">{nudge.from || 'someone'}</span> is thinking of you
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* 1. Header Area */}
       <header className="flex justify-between items-center px-5 py-3 glass-card border-0 border-b border-white/5 z-20 relative">
         {/* Left Side: Logo & Room details */}
@@ -1719,7 +1875,7 @@ export default function App() {
               )}
             </div>
             <div className="flex items-center gap-2 mt-0.5">
-              <p className="text-[10px] text-white/25 leading-none">Drawing as <span className="text-white/40 font-medium">{nickname}</span></p>
+              <p className="text-[10px] text-white/25 leading-none">drawing as <span className="text-white/40 font-medium">{nickname}</span></p>
               <div className={`text-[9px] text-emerald-400/60 font-medium transition-opacity duration-500 ${showSavedIndicator ? 'opacity-100' : 'opacity-0'}`}>
                 ✓ Saved
               </div>
@@ -1729,24 +1885,53 @@ export default function App() {
 
         {/* Right Side: Partner Presence indicator & Actions */}
         <div className="flex items-center gap-2.5">
-          {/* Presence Indicator */}
-          <div className="hidden sm:flex items-center gap-1.5 px-2 py-1.5 bg-white/[0.03] rounded-full border border-white/[0.06] text-xs">
-            {activePresences.length > 0 ? (
-              activePresences.map(p => (
-                <div key={p.userId} className="flex items-center gap-1.5 px-2 py-1 bg-white/5 rounded-full">
-                  <span className="font-semibold text-white/90 text-[11px] truncate max-w-[80px]">{p.name}</span>
-                  {p.activeColor && p.activeTool !== 'eraser' && (
-                    <span className="w-2.5 h-2.5 rounded-full border border-white/20" style={{ backgroundColor: p.activeColor }} title={`${p.name}'s color`} />
-                  )}
+          {/* Presence: overlapping avatar stack + gentle status */}
+          <div className="hidden sm:flex items-center gap-2.5">
+            <div className="flex items-center -space-x-2">
+              {/* You */}
+              <span
+                className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white ring-2 ring-[var(--avatar-ring)] bg-gradient-to-br from-rose-400 to-amber-400 lowercase"
+                title={`You (${nickname})`}
+              >
+                {nickname.slice(0, 1) || '·'}
+              </span>
+              {/* Partners */}
+              {activePresences.map(p => (
+                <span
+                  key={p.userId}
+                  className="relative w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white ring-2 ring-[var(--avatar-ring)] lowercase"
+                  style={{ backgroundColor: p.activeColor || '#C85C50' }}
+                  title={p.name}
+                >
+                  {(p.name || '?').slice(0, 1)}
                   {p.isDrawing && (
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" style={{ boxShadow: '0 0 8px rgba(52,211,153,0.5)' }} />
+                    <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-[var(--avatar-ring)]" />
                   )}
-                </div>
-              ))
-            ) : (
-              <span className="text-white/20 font-medium italic text-[11px] px-2">Waiting for others...</span>
+                </span>
+              ))}
+              {/* Empty seat while waiting */}
+              {activePresences.length === 0 && (
+                <span className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white/35 ring-2 ring-[var(--avatar-ring)] border border-dashed border-white/25 bg-white/[0.03]">
+                  +1
+                </span>
+              )}
+            </div>
+            {activePresences.length === 0 && (
+              <span className="text-[11px] text-white/35 italic font-medium">
+                {roomMaxParticipants === 2 ? 'waiting for your person…' : 'waiting for the group…'}
+              </span>
             )}
           </div>
+
+          {/* Send a nudge */}
+          <button
+            onClick={sendNudge}
+            disabled={activePresences.length === 0}
+            className="p-2 rounded-full border cursor-pointer transition bg-white/[0.04] hover:bg-amber-400/10 border-white/[0.06] text-amber-300/70 hover:text-amber-300 disabled:opacity-25 disabled:cursor-not-allowed disabled:hover:bg-white/[0.04]"
+            title={activePresences.length === 0 ? 'Nobody to nudge yet' : 'Send a nudge'}
+          >
+            <Sparkles className="w-4 h-4" />
+          </button>
 
           {/* Day / Evening Toggle */}
           <ThemeToggle theme={theme} onToggle={toggleTheme} />
@@ -1786,16 +1971,20 @@ export default function App() {
         {/* Left Section: Canvas and Bottom Toolbar */}
         <div className="flex-grow flex flex-col justify-between items-center relative overflow-hidden h-full w-full min-h-0">
 
-          {/* Daily Prompt Banner */}
+          {/* Tonight's Prompt Banner — perched over the top of the paper */}
           {!hidePrompt && (
-            <div className="absolute top-12 z-20 w-full flex justify-center px-4 animate-fade-in pointer-events-none">
-              <div className="glass-card-strong rounded-full px-5 py-2 flex items-center gap-3 pointer-events-auto max-w-xs w-full">
-                <Sparkles className="w-4 h-4 shrink-0" style={{ color: '#E5A469' }} />
-                <span className="text-xs text-white/80 font-medium truncate flex-grow text-center">
-                  {/* eslint-disable-next-line react-hooks/purity -- intentional daily (clock-based) prompt */}
-                  {DAILY_PROMPTS[Math.floor(Date.now() / 86400000) % DAILY_PROMPTS.length]}
+            <div className="absolute top-14 z-20 w-full flex justify-center px-4 animate-fade-in pointer-events-none">
+              <div className="glass-card-strong rounded-full pl-4 pr-2.5 py-2 flex items-center gap-2.5 pointer-events-auto max-w-[92vw]">
+                <Sparkles className="w-3.5 h-3.5 shrink-0" style={{ color: '#E5A469' }} />
+                <span className="text-xs sm:text-sm whitespace-nowrap overflow-hidden text-ellipsis max-w-[68vw] sm:max-w-none">
+                  <span className="font-semibold text-amber-300/90">Tonight's prompt</span>
+                  <span className="text-white/25"> · </span>
+                  <span className="italic font-display text-white/80">
+                    {/* eslint-disable-next-line react-hooks/purity -- intentional daily (clock-based) prompt */}
+                    {DAILY_PROMPTS[Math.floor(Date.now() / 86400000) % DAILY_PROMPTS.length].toLowerCase()}
+                  </span>
                 </span>
-                <button 
+                <button
                   onClick={() => {
                     const today = new Date().toISOString().split('T')[0];
                     localStorage.setItem('cozy_canvas_prompt_hidden_date', today);
@@ -1886,6 +2075,16 @@ export default function App() {
                     </div>
                   );
                 })}
+
+                {/* Cozy collaboration hint, only while the paper is still sparse */}
+                {visibleStrokes.length < 4 && (
+                  <div className="absolute bottom-[6%] left-0 right-0 text-center px-6 pointer-events-none select-none animate-fade-in">
+                    <span className="italic font-display text-base sm:text-lg" style={{ color: 'rgba(176, 120, 110, 0.55)' }}>
+                      {/* eslint-disable-next-line react-hooks/purity -- stable daily pick */}
+                      {COLLAB_HINTS[Math.floor(Date.now() / 86400000) % COLLAB_HINTS.length]}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           </main>
@@ -1925,32 +2124,66 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Tool Selector (Pen / Eraser) */}
-                <div className="flex items-center bg-white/5 border border-white/[0.08] p-0.5 rounded-xl gap-0.5">
-                  <button
-                    onClick={() => setActiveTool('pen')}
-                    className={`p-1.5 rounded-lg transition-all duration-200 cursor-pointer ${
-                      activeTool === 'pen'
-                        ? 'bg-gradient-to-r from-rose-400 to-amber-400 text-white shadow-lg'
-                        : 'text-white/30 hover:text-white/50 hover:bg-white/5'
-                    }`}
-                    style={activeTool === 'pen' ? { boxShadow: '0 4px 12px rgba(232,168,124,0.3)' } : {}}
-                    title="Pen tool"
-                  >
-                    <Brush className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => setActiveTool('eraser')}
-                    className={`p-1.5 rounded-lg transition-all duration-200 cursor-pointer ${
-                      activeTool === 'eraser'
-                        ? 'bg-gradient-to-r from-rose-400 to-amber-400 text-white shadow-lg'
-                        : 'text-white/30 hover:text-white/50 hover:bg-white/5'
-                    }`}
-                    style={activeTool === 'eraser' ? { boxShadow: '0 4px 12px rgba(232,168,124,0.3)' } : {}}
-                    title="Eraser tool"
-                  >
-                    <Eraser className="w-4 h-4" />
-                  </button>
+                {/* Tool Selector (Pen / Eraser / Shapes) */}
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center bg-white/5 border border-white/[0.08] p-0.5 rounded-xl gap-0.5">
+                    <button
+                      onClick={() => setActiveTool('pen')}
+                      className={`p-1.5 rounded-lg transition-all duration-200 cursor-pointer ${
+                        activeTool === 'pen'
+                          ? 'bg-gradient-to-r from-rose-400 to-amber-400 text-white shadow-lg'
+                          : 'text-white/30 hover:text-white/50 hover:bg-white/5'
+                      }`}
+                      style={activeTool === 'pen' ? { boxShadow: '0 4px 12px rgba(232,168,124,0.3)' } : {}}
+                      title="Pen"
+                    >
+                      <Brush className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => setActiveTool('eraser')}
+                      className={`p-1.5 rounded-lg transition-all duration-200 cursor-pointer ${
+                        activeTool === 'eraser'
+                          ? 'bg-gradient-to-r from-rose-400 to-amber-400 text-white shadow-lg'
+                          : 'text-white/30 hover:text-white/50 hover:bg-white/5'
+                      }`}
+                      style={activeTool === 'eraser' ? { boxShadow: '0 4px 12px rgba(232,168,124,0.3)' } : {}}
+                      title="Eraser"
+                    >
+                      <Eraser className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => setActiveTool('shape')}
+                      className={`p-1.5 rounded-lg transition-all duration-200 cursor-pointer ${
+                        activeTool === 'shape'
+                          ? 'bg-gradient-to-r from-rose-400 to-amber-400 text-white shadow-lg'
+                          : 'text-white/30 hover:text-white/50 hover:bg-white/5'
+                      }`}
+                      style={activeTool === 'shape' ? { boxShadow: '0 4px 12px rgba(232,168,124,0.3)' } : {}}
+                      title="Shapes"
+                    >
+                      <Square className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  {/* Shape kind (only while the shapes tool is active) */}
+                  {activeTool === 'shape' && (
+                    <div className="flex items-center bg-white/5 border border-white/[0.08] p-0.5 rounded-xl gap-0.5 animate-fade-in">
+                      <button
+                        onClick={() => setActiveShape('rect')}
+                        className={`p-1.5 rounded-lg transition cursor-pointer ${activeShape === 'rect' ? 'bg-white/15 text-white/90' : 'text-white/30 hover:text-white/50'}`}
+                        title="Rectangle"
+                      >
+                        <Square className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => setActiveShape('ellipse')}
+                        className={`p-1.5 rounded-lg transition cursor-pointer ${activeShape === 'ellipse' ? 'bg-white/15 text-white/90' : 'text-white/30 hover:text-white/50'}`}
+                        title="Ellipse"
+                      >
+                        <Circle className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Brush Size Controls */}
@@ -1964,7 +2197,7 @@ export default function App() {
                     onChange={(e) => activeTool === 'eraser' ? setActiveEraserSize(parseInt(e.target.value)) : setActiveSize(parseInt(e.target.value))}
                     className="w-full cursor-pointer h-1"
                   />
-                  <span className="text-[10px] font-bold text-white/30 w-6 text-right">{activeTool === 'eraser' ? activeEraserSize : activeSize}px</span>
+                  <span className="text-[10px] font-bold text-white/30 w-9 text-right">{activeTool === 'eraser' ? activeEraserSize : activeSize} px</span>
                 </div>
               </div>
 
