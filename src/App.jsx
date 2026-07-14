@@ -324,7 +324,9 @@ export default function App() {
     return params.get('room') || '';
   });
   const [roomInput, setRoomInput] = useState('');
-  const [nickname, setNickname] = useState(() => localStorage.getItem('cozy_canvas_nickname') || '');
+  // Always start without a nickname so CozyCanvas asks for one on every fresh load,
+  // instead of silently reusing the last one. (Not persisted to localStorage.)
+  const [nickname, setNickname] = useState('');
   const [nicknameInput, setNicknameInput] = useState('');
   const [userId] = useState(() => {
     let id = localStorage.getItem('cozy_canvas_user_id');
@@ -394,6 +396,17 @@ export default function App() {
   const messagesEndRef = useRef(null);
   const messagesLoadedRef = useRef(false);
   const typingTimeoutRef = useRef(null);
+  const messageInputRef = useRef(null);
+
+  // Grow the chat input with its content (up to a cap) so a long message stays fully
+  // visible while typing instead of scrolling within one line.
+  useEffect(() => {
+    const el = messageInputRef.current;
+    if (el) {
+      el.style.height = 'auto';
+      el.style.height = `${Math.min(el.scrollHeight, 128)}px`;
+    }
+  }, [messageInput, showChat]);
 
   // Handle escape key to close emoji picker
   useEffect(() => {
@@ -653,6 +666,7 @@ export default function App() {
     if (!db || !roomCode || !userId || !presenceLoaded || isRoomFull) return;
     const presenceRef = doc(db, 'rooms', roomCode, 'presence', userId);
     setDoc(presenceRef, {
+      userId,
       activeColor,
       activeSize,
       activeEraserSize,
@@ -668,9 +682,11 @@ export default function App() {
     const unsubscribe = onSnapshot(presenceColl, (snapshot) => {
       const list = [];
       snapshot.forEach(docSnap => {
-        const data = docSnap.data();
-        if (data.userId !== userId) {
-          list.push(data);
+        // Identify our own doc by its ID (always the userId). The `userId` field can be
+        // momentarily absent while writes race, and keying off it would make us count our
+        // own doc as a partner — causing phantom cursors and false "room full".
+        if (docSnap.id !== userId) {
+          list.push({ ...docSnap.data(), userId: docSnap.id });
         }
       });
       setPresenceList(list);
@@ -1185,7 +1201,6 @@ export default function App() {
     e.preventDefault();
     if (!nicknameInput.trim()) return;
     const name = nicknameInput.trim();
-    localStorage.setItem('cozy_canvas_nickname', name);
     setNickname(name);
     triggerHeartConfetti();
   };
@@ -1229,10 +1244,6 @@ export default function App() {
     } finally {
       setAdminLoading(false);
     }
-  };
-
-  const loadAdminRooms = () => {
-    loadRoomsDirectly();
   };
 
   // Deep deletion of a room and all its subcollections
@@ -1367,7 +1378,7 @@ export default function App() {
             </div>
             <div className="flex items-center gap-3">
               <button
-                onClick={loadAdminRooms}
+                onClick={loadRoomsDirectly}
                 className="py-2.5 px-4 bg-white/5 hover:bg-white/10 text-white/60 font-semibold text-xs rounded-xl transition cursor-pointer border border-white/5"
               >
                 Refresh List
@@ -1852,8 +1863,10 @@ export default function App() {
                         left: `${(p.x / 1500) * 100}%`,
                         top: `${(p.y / 1500) * 100}%`,
                         transform: 'translate(-50%, -50%)',
-                        width: Math.max(cursorSize * canvasScale, p.activeTool === 'eraser' ? 4 : 2),
-                        height: Math.max(cursorSize * canvasScale, p.activeTool === 'eraser' ? 4 : 2)
+                        // A partner's cursor is a "where are they" indicator, so keep a clearly
+                        // visible floor (it scales up for large brushes but never vanishes).
+                        width: Math.max(cursorSize * canvasScale, 12),
+                        height: Math.max(cursorSize * canvasScale, 12)
                       }}
                     >
                       {/* Pointer brush circle */}
@@ -2019,7 +2032,7 @@ export default function App() {
 
         {/* Right Section: Collapsible Chat Sidebar */}
         {showChat && (
-          <div className="fixed z-30 flex flex-col shadow-2xl glass-card-strong min-h-0 w-full h-full inset-0 sm:w-80 sm:h-auto sm:inset-auto sm:top-[68px] sm:bottom-5 sm:right-5 rounded-none sm:rounded-2xl animate-slide-in-right overflow-hidden">
+          <div className="chat-surface fixed z-30 flex flex-col shadow-2xl glass-card-strong min-h-0 w-full h-full inset-0 sm:w-80 sm:h-auto sm:inset-auto sm:top-[68px] sm:bottom-5 sm:right-5 rounded-none sm:rounded-2xl animate-slide-in-right overflow-hidden">
 
             {/* Chat Header */}
             <div className="px-4 py-3 border-b border-white/5 flex justify-between items-center bg-white/[0.03]">
@@ -2065,7 +2078,7 @@ export default function App() {
                       <div
                         onClick={() => setActiveReactionMsgId(prev => prev === msg.id ? null : msg.id)}
                         onContextMenu={(e) => { e.preventDefault(); setActiveReactionMsgId(prev => prev === msg.id ? null : msg.id); }}
-                        className={`px-3.5 py-2 rounded-2xl text-xs leading-relaxed relative cursor-pointer ${
+                        className={`px-3.5 py-2 rounded-2xl text-xs leading-relaxed relative cursor-pointer whitespace-pre-wrap break-words ${
                           isMe
                             ? 'bg-gradient-to-r from-rose-500/90 to-amber-500/90 text-white rounded-br-sm'
                             : 'bg-white/[0.08] text-white/70 rounded-bl-sm border border-white/5'
@@ -2155,7 +2168,7 @@ export default function App() {
                   </div>
                 </>
               )}
-              <form onSubmit={handleSendMessage} className="flex gap-2 relative z-50">
+              <form onSubmit={handleSendMessage} className="flex gap-2 items-end relative z-50">
                 <button
                   type="button"
                   onClick={() => setShowEmojiPicker(!showEmojiPicker)}
@@ -2163,14 +2176,22 @@ export default function App() {
                 >
                   <Smile className="w-4 h-4" />
                 </button>
-                <input
-                  type="text"
+                <textarea
+                  ref={messageInputRef}
                   value={messageInput}
                   onChange={handleMessageInputChange}
+                  onKeyDown={(e) => {
+                    // Enter sends; Shift+Enter inserts a new line.
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSendMessage(e);
+                    }
+                  }}
                   onBlur={handleInputBlur}
                   placeholder="Write a sweet message..."
-                  maxLength={200}
-                  className="flex-grow px-3 py-2 glass-input rounded-xl text-xs transition"
+                  maxLength={500}
+                  rows={1}
+                  className="flex-grow px-3 py-2 glass-input rounded-xl text-xs leading-relaxed transition resize-none max-h-32 overflow-y-auto"
                 />
                 <button
                   type="submit"
