@@ -23,7 +23,11 @@ import {
   Sun,
   Moon,
   Square,
-  Circle
+  Circle,
+  UserPlus,
+  UserX,
+  Crown,
+  Play
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import EmojiPicker from 'emoji-picker-react';
@@ -42,11 +46,18 @@ import {
   orderBy, 
   getDoc,
   getDocs,
-  serverTimestamp
+  serverTimestamp,
+  where,
+  arrayUnion,
+  arrayRemove,
+  deleteField
 } from 'firebase/firestore';
 
-// Firebase Auth (anonymous) — lets Firestore Security Rules require an authenticated session
-import { getAuth, signInAnonymously } from 'firebase/auth';
+// Firebase Auth — username+password accounts (see src/auth.jsx)
+import { getAuth, onAuthStateChanged, signOut } from 'firebase/auth';
+import LoginScreen from './auth.jsx';
+import FriendsPanel from './friends.jsx';
+import { emailToUsername } from './account.js';
 
 // Cozy Room Code Wordlists
 const ADJECTIVES = ['warm', 'cozy', 'gentle', 'soft', 'golden', 'misty', 'starry', 'dusky', 'amber', 'rosy', 'dreamy', 'silent', 'peaceful', 'sweet', 'blushing', 'velvet', 'tender', 'floral'];
@@ -308,24 +319,38 @@ export default function App() {
   }, [theme]);
   const toggleTheme = useCallback(() => setTheme((t) => (t === 'day' ? 'evening' : 'day')), []);
 
-  // Initialize DB
-  const db = useMemo(() => {
-    if (!firebaseConfig) return null;
+  // Initialize DB + Auth
+  const { db, auth } = useMemo(() => {
+    if (!firebaseConfig) return { db: null, auth: null };
     try {
       const apps = getApps();
       const app = apps.length > 0 ? apps[0] : initializeApp(firebaseConfig);
-      // Sign in anonymously so Firestore Security Rules can require request.auth != null.
-      // Best-effort: if Anonymous Auth isn't enabled in the Firebase console yet, we log and
-      // continue so the app keeps working under the existing rules.
-      signInAnonymously(getAuth(app)).catch((err) =>
-        console.warn('Anonymous auth unavailable (enable it in Firebase console for secure rules):', err.code)
-      );
-      return getFirestore(app);
+      return { db: getFirestore(app), auth: getAuth(app) };
     } catch (e) {
       console.error('Firebase DB Init Error:', e);
-      return null;
+      return { db: null, auth: null };
     }
   }, [firebaseConfig]);
+
+  // Account session (username+password via src/auth.jsx). The username lives in the
+  // synthetic email, so a session alone is enough to know who's drawing — no extra
+  // profile read required before the app is usable.
+  const [authUser, setAuthUser] = useState(null);
+  const [authReady, setAuthReady] = useState(false);
+  useEffect(() => {
+    if (!auth) return;
+    const unsub = onAuthStateChanged(auth, (u) => {
+      // Ignore stray anonymous sessions from the pre-account era.
+      setAuthUser(u && !u.isAnonymous ? u : null);
+      setAuthReady(true);
+    });
+    return () => unsub();
+  }, [auth]);
+  const handleSignOut = () => {
+    setRoomCode('');
+    setSelectedMode(null);
+    if (auth) signOut(auth).catch(() => {});
+  };
 
   // 2. Room & Onboarding State
   const [selectedMode, setSelectedMode] = useState(null); // 'couple' | 'group'
@@ -335,18 +360,11 @@ export default function App() {
     return params.get('room') || '';
   });
   const [roomInput, setRoomInput] = useState('');
-  // Always start without a nickname so CozyCanvas asks for one on every fresh load,
-  // instead of silently reusing the last one. (Not persisted to localStorage.)
-  const [nickname, setNickname] = useState('');
-  const [nicknameInput, setNicknameInput] = useState('');
-  const [userId] = useState(() => {
-    let id = localStorage.getItem('cozy_canvas_user_id');
-    if (!id) {
-      id = `user-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-      localStorage.setItem('cozy_canvas_user_id', id);
-    }
-    return id;
-  });
+  // Identity comes from the account: the auth UID is the userId everywhere
+  // (presence docs, friendships, room ownership), and the username doubles as
+  // the display name — the old per-room nickname prompt is gone.
+  const userId = authUser?.uid || '';
+  const nickname = authUser ? emailToUsername(authUser.email) : '';
 
   // 3. Canvas State
   const canvasRef = useRef(null);
@@ -391,6 +409,23 @@ export default function App() {
   const [nudge, setNudge] = useState(null); // { from, at } — a partner's incoming "thinking of you"
   const [redoStack, setRedoStack] = useState([]);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
+
+  // 4.05 Room ownership: whoever created the room hosts it — they can kick
+  // (with a ban list), un-ban, and hand the keys to someone else.
+  const [roomOwnerId, setRoomOwnerId] = useState(null);
+  const [roomBanned, setRoomBanned] = useState([]);
+  const [roomBannedNames, setRoomBannedNames] = useState({});
+  const [showParticipants, setShowParticipants] = useState(false);
+  const isRoomOwner = !!userId && roomOwnerId === userId;
+  const isBannedHere = !!userId && roomBanned.includes(userId);
+
+  // 4.06 Friends drawer + request badge
+  const [showFriends, setShowFriends] = useState(false);
+  const [friendRequestCount, setFriendRequestCount] = useState(0);
+
+  // 4.07 Time-lapse replay
+  const [isReplaying, setIsReplaying] = useState(false);
+  const replayRafRef = useRef(null);
 
   // 4.1 Chat States
   const [messages, setMessages] = useState([]);
@@ -543,18 +578,25 @@ export default function App() {
         if (data.streakCount) {
           setStreakCount(data.streakCount);
         }
+        setRoomOwnerId(data.ownerId || null);
+        setRoomBanned(data.banned || []);
+        setRoomBannedNames(data.bannedNames || {});
       } else {
-        // Init room doc
-        setDoc(roomRef, { 
-          createdAt: serverTimestamp(), 
+        // Init room doc — first person in (e.g. via an invite link to a room
+        // that doesn't exist yet) becomes its owner.
+        setDoc(roomRef, {
+          createdAt: serverTimestamp(),
           maxParticipants: 2,
           lastActiveDate: new Date().toISOString().split('T')[0],
-          streakCount: 1 
+          streakCount: 1,
+          ownerId: userId || null,
+          ownerName: nickname || null,
+          banned: []
         }).catch(() => {});
       }
     });
     return () => unsubscribe();
-  }, [db, roomCode]);
+  }, [db, roomCode, userId, nickname]);
 
   // DB Sync 2: Listen to Strokes
   useEffect(() => {
@@ -635,7 +677,7 @@ export default function App() {
 
   // DB Sync 4: Presence & Heartbeat Listeners
   useEffect(() => {
-    if (!db || !roomCode || !nickname || !userId || !presenceLoaded || isRoomFull) return;
+    if (!db || !roomCode || !nickname || !userId || !presenceLoaded || isRoomFull || isBannedHere) return;
 
     const presenceRef = doc(db, 'rooms', roomCode, 'presence', userId);
 
@@ -670,13 +712,13 @@ export default function App() {
       clearInterval(interval);
       deleteDoc(presenceRef).catch(() => {});
     };
-  }, [db, roomCode, nickname, userId, presenceLoaded, isRoomFull]);
+  }, [db, roomCode, nickname, userId, presenceLoaded, isRoomFull, isBannedHere]);
 
   // Sync active tool settings into presence WITHOUT re-running the heartbeat effect (which would
   // delete + recreate the doc and make the partner's cursor flicker). merge:true creates the doc
   // if the heartbeat hasn't written it yet.
   useEffect(() => {
-    if (!db || !roomCode || !userId || !presenceLoaded || isRoomFull) return;
+    if (!db || !roomCode || !userId || !presenceLoaded || isRoomFull || isBannedHere) return;
     const presenceRef = doc(db, 'rooms', roomCode, 'presence', userId);
     setDoc(presenceRef, {
       userId,
@@ -687,7 +729,44 @@ export default function App() {
       activeShape,
       lastActive: Date.now()
     }, { merge: true }).catch(() => { /* heartbeat will (re)create the doc */ });
-  }, [db, roomCode, userId, presenceLoaded, isRoomFull, activeColor, activeSize, activeEraserSize, activeTool, activeShape]);
+  }, [db, roomCode, userId, presenceLoaded, isRoomFull, isBannedHere, activeColor, activeSize, activeEraserSize, activeTool, activeShape]);
+
+  // Global presence: a quiet heartbeat on users/{uid} so friends can see
+  // whether you're offline, online, or in a room (and which one).
+  useEffect(() => {
+    if (!db || !userId || !nickname) return;
+    const meRef = doc(db, 'users', userId);
+    const write = () => {
+      setDoc(meRef, {
+        username: nickname,
+        online: true,
+        lastSeen: Date.now(),
+        currentRoom: roomCode || null
+      }, { merge: true }).catch(() => { /* enabled once firestore.rules is deployed */ });
+    };
+    write();
+    const interval = setInterval(write, 25000);
+    return () => {
+      clearInterval(interval);
+      // Best-effort "gone" marker on room change / logout / unmount.
+      setDoc(meRef, { online: false, currentRoom: null, lastSeen: Date.now() }, { merge: true }).catch(() => {});
+    };
+  }, [db, userId, nickname, roomCode]);
+
+  // Friend request badge — incoming pendings, visible even with the drawer closed.
+  useEffect(() => {
+    if (!db || !userId) return;
+    const q = query(collection(db, 'friendships'), where('users', 'array-contains', userId));
+    const unsub = onSnapshot(q, (snap) => {
+      let count = 0;
+      snap.forEach(d => {
+        const f = d.data();
+        if (f.status === 'pending' && f.requestedBy !== userId) count++;
+      });
+      setFriendRequestCount(count);
+    }, () => setFriendRequestCount(0));
+    return () => unsub();
+  }, [db, userId]);
 
   // DB Sync 5: Listen to Partner Presence
   useEffect(() => {
@@ -715,7 +794,7 @@ export default function App() {
 
   // Throttled Presence Writer for drawing / pointermove updates
   const updatePresenceCursor = useThrottle((x, y, drawing, points) => {
-    if (!db || !roomCode || !userId) return;
+    if (!db || !roomCode || !userId || isBannedHere) return;
     const presenceRef = doc(db, 'rooms', roomCode, 'presence', userId);
     updateDoc(presenceRef, {
       x,
@@ -729,7 +808,7 @@ export default function App() {
 
   // Immediate presence update (no throttle, for pointerup/pointerleave)
   const updatePresenceCursorImmediate = (x, y, drawing, points) => {
-    if (!db || !roomCode || !userId) return;
+    if (!db || !roomCode || !userId || isBannedHere) return;
     const presenceRef = doc(db, 'rooms', roomCode, 'presence', userId);
     updateDoc(presenceRef, {
       x,
@@ -745,11 +824,11 @@ export default function App() {
   // field and greet a new value with a heart burst + a little "thinking of you" toast.
   const seenNudgesRef = useRef({});
   const sendNudge = useCallback(() => {
-    if (!db || !roomCode || !userId) return;
+    if (!db || !roomCode || !userId || isBannedHere) return;
     const presenceRef = doc(db, 'rooms', roomCode, 'presence', userId);
     updateDoc(presenceRef, { nudge: Date.now(), lastActive: Date.now() }).catch(() => {});
     triggerHeartConfetti(); // instant local feedback for the sender
-  }, [db, roomCode, userId]);
+  }, [db, roomCode, userId, isBannedHere]);
 
   useEffect(() => {
     activePresences.forEach(p => {
@@ -770,6 +849,34 @@ export default function App() {
     const t = setTimeout(() => setNudge(null), 3200);
     return () => clearTimeout(t);
   }, [nudge]);
+
+  // 4.9 Room host controls — only meaningful when isRoomOwner.
+  const kickUser = (targetUid, targetName) => {
+    if (!db || !roomCode || !isRoomOwner || targetUid === userId) return;
+    const roomRef = doc(db, 'rooms', roomCode);
+    updateDoc(roomRef, {
+      banned: arrayUnion(targetUid),
+      [`bannedNames.${targetUid}`]: targetName || 'someone'
+    }).catch(() => {});
+    deleteDoc(doc(db, 'rooms', roomCode, 'presence', targetUid)).catch(() => {});
+  };
+
+  const unbanUser = (targetUid) => {
+    if (!db || !roomCode || !isRoomOwner) return;
+    updateDoc(doc(db, 'rooms', roomCode), {
+      banned: arrayRemove(targetUid),
+      [`bannedNames.${targetUid}`]: deleteField()
+    }).catch(() => {});
+  };
+
+  const promoteUser = (targetUid, targetName) => {
+    if (!db || !roomCode || !isRoomOwner || targetUid === userId) return;
+    if (!window.confirm(`Hand the room keys to ${targetName}? You'll stay in the room, they'll be its host.`)) return;
+    updateDoc(doc(db, 'rooms', roomCode), {
+      ownerId: targetUid,
+      ownerName: targetName || 'someone'
+    }).catch(() => {});
+  };
 
   // 5. Canvas Drawing Engine
   const drawStroke = (ctx, stroke) => {
@@ -895,10 +1002,81 @@ export default function App() {
     }
   }, [visibleStrokes, activePresences, activeColor, activeSize, activeEraserSize, activeTool, activeShape]);
 
-  // Redraw when strokes, partner status, or settings change
+  // Redraw when strokes, partner status, or settings change — paused while a
+  // time-lapse replay owns the canvas; when the replay ends this repaints.
   useEffect(() => {
+    if (isReplaying) return;
     drawCanvas();
-  }, [drawCanvas]);
+  }, [drawCanvas, isReplaying]);
+
+  // 5.5 Time-lapse replay: redraw the room's story stroke-by-stroke, in the
+  // order everyone drew it. Pen strokes grow point-by-point, shapes grow from
+  // their anchor, erases replay too — so the finale matches the live canvas.
+  const stopReplay = useCallback(() => {
+    if (replayRafRef.current) cancelAnimationFrame(replayRafRef.current);
+    replayRafRef.current = null;
+    setIsReplaying(false);
+  }, []);
+
+  const startReplay = () => {
+    const canvas = canvasRef.current;
+    if (!canvas || isReplaying || visibleStrokes.length === 0) return;
+    const ctx = canvas.getContext('2d');
+    const strokesToPlay = visibleStrokes;
+
+    // Per-stroke time weighted by how much drawing it holds, capped so the
+    // whole story lands in ~9 seconds.
+    const durations = strokesToPlay.map(s =>
+      s.type === 'shape' ? 320 : Math.max(140, Math.min(900, (s.points?.length || 1) * 14))
+    );
+    let total = durations.reduce((a, b) => a + b, 0);
+    const squeeze = total > 9000 ? 9000 / total : 1;
+    const starts = [];
+    let acc = 0;
+    for (const d of durations) {
+      starts.push(acc);
+      acc += d * squeeze;
+    }
+    total = acc;
+
+    setIsReplaying(true);
+    const t0 = performance.now();
+
+    const tick = (now) => {
+      const t = now - t0;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      for (let i = 0; i < strokesToPlay.length; i++) {
+        const dur = durations[i] * squeeze;
+        if (t >= starts[i] + dur) {
+          drawStroke(ctx, strokesToPlay[i]);
+          continue;
+        }
+        if (t < starts[i]) break;
+        const f = (t - starts[i]) / dur;
+        const s = strokesToPlay[i];
+        if (s.type === 'shape') {
+          const a = s.points[0];
+          const b = s.points[s.points.length - 1];
+          drawStroke(ctx, { ...s, points: [a, { x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f }] });
+        } else {
+          drawStroke(ctx, { ...s, points: s.points.slice(0, Math.max(2, Math.ceil(s.points.length * f))) });
+        }
+        break;
+      }
+      if (t < total) {
+        replayRafRef.current = requestAnimationFrame(tick);
+      } else {
+        replayRafRef.current = null;
+        setIsReplaying(false);
+      }
+    };
+    replayRafRef.current = requestAnimationFrame(tick);
+  };
+
+  // Never leave a dangling animation frame behind.
+  useEffect(() => () => {
+    if (replayRafRef.current) cancelAnimationFrame(replayRafRef.current);
+  }, []);
 
   // Listen to window resizing to keep the viewport bounds correct
   useEffect(() => {
@@ -1086,7 +1264,7 @@ export default function App() {
   const handleMessageInputChange = (e) => {
     setMessageInput(e.target.value);
     
-    if (!db || !roomCode || !userId) return;
+    if (!db || !roomCode || !userId || isBannedHere) return;
     const presenceRef = doc(db, 'rooms', roomCode, 'presence', userId);
     
     updateDoc(presenceRef, { isChatTyping: true, lastActive: Date.now() }).catch(() => {});
@@ -1273,13 +1451,6 @@ export default function App() {
     document.body.removeChild(link);
   };
 
-  // Reset database setup
-  const handleResetConfig = () => {
-    localStorage.removeItem('cozy_canvas_db_config');
-    localStorage.removeItem('cozy_canvas_nickname');
-    window.location.href = window.location.origin;
-  };
-
   // Save config from input form
   const handleSaveConfig = (e) => {
     e.preventDefault();
@@ -1309,25 +1480,20 @@ export default function App() {
     const code = generateRoomCode();
     setRoomCode(code);
     
-    // Explicitly init room doc immediately on creation so maxParticipants is correct
+    // Explicitly init room doc immediately on creation so maxParticipants is
+    // correct and the creator is recorded as the room's owner.
     if (db) {
       const roomRef = doc(db, 'rooms', code);
-      setDoc(roomRef, { 
-        createdAt: serverTimestamp(), 
-        maxParticipants: selectedMode === 'group' ? 5 : 2 
+      setDoc(roomRef, {
+        createdAt: serverTimestamp(),
+        maxParticipants: selectedMode === 'group' ? 5 : 2,
+        ownerId: userId,
+        ownerName: nickname,
+        banned: []
       }).catch(() => {});
     }
 
     triggerJoinConfetti();
-  };
-
-  // Nickname onboard submit
-  const handleNicknameSubmit = (e) => {
-    e.preventDefault();
-    if (!nicknameInput.trim()) return;
-    const name = nicknameInput.trim();
-    setNickname(name);
-    triggerHeartConfetti();
   };
 
   // Admin authentication submit
@@ -1577,31 +1743,76 @@ export default function App() {
     );
   }
 
+  // Screen A2: Account gate — a username (and password) instead of nicknames.
+  if (!authReady) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden">
+        <Atmosphere />
+        <div className="w-10 h-10 border-4 border-rose-400/30 border-t-rose-400 rounded-full animate-spin relative z-10" />
+      </div>
+    );
+  }
+  if (!authUser) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden">
+        <Atmosphere />
+        <ThemeToggle theme={theme} onToggle={toggleTheme} className="absolute top-6 right-6 z-20" />
+        <div className="relative z-10 flex flex-col items-center mb-6">
+          <h1 className="text-4xl font-extrabold gradient-text text-center tracking-tight font-display">CozyCanvas</h1>
+          <p className="text-rose-300/80 text-center text-sm italic font-display mt-1">draw together, stay close</p>
+        </div>
+        <LoginScreen auth={auth} db={db} />
+      </div>
+    );
+  }
+
   // Screen B: If DB configured but no room joined yet — Lobby
   if (!roomCode) {
     if (!selectedMode) {
       return (
         <div className="min-h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden">
           <Atmosphere />
+          <button
+            onClick={() => setShowFriends(v => !v)}
+            className="absolute top-6 left-6 px-4 py-2.5 bg-white/5 hover:bg-white/10 transition rounded-full border border-white/5 cursor-pointer z-20 flex items-center gap-2 text-white/50 hover:text-white/80 text-xs font-semibold"
+            title="Friends"
+          >
+            <UserPlus className="w-4 h-4" />
+            Friends
+            {friendRequestCount > 0 && (
+              <span className="bg-rose-500 text-white font-bold text-[9px] w-4 h-4 rounded-full flex items-center justify-center" style={{ boxShadow: '0 0 8px rgba(244,63,94,0.5)' }}>
+                {friendRequestCount}
+              </span>
+            )}
+          </button>
           <ThemeToggle theme={theme} onToggle={toggleTheme} className="absolute top-6 right-20 z-20" />
           <button
             onClick={() => setShowSettings(!showSettings)}
             className="absolute top-6 right-6 p-3 bg-white/5 hover:bg-white/10 transition rounded-full border border-white/5 cursor-pointer z-20"
-            title="Database Settings"
+            title="Account"
           >
             <Settings className="w-5 h-5 text-white/40" />
           </button>
-          
+
+          {showFriends && (
+            <FriendsPanel
+              db={db}
+              uid={userId}
+              username={nickname}
+              onJoinRoom={(code) => { setShowFriends(false); setRoomCode(code); }}
+              onClose={() => setShowFriends(false)}
+            />
+          )}
+
           {showSettings && (
             <div className="absolute top-20 right-6 z-50 w-64 glass-card-strong rounded-2xl p-4 animate-fade-in">
-              <h3 className="text-sm font-bold text-white/70 mb-2">Database Connected</h3>
-              <p className="text-xs text-white/30 mb-4 font-mono truncate">{firebaseConfig.projectId}</p>
+              <h3 className="text-sm font-bold text-white/70 mb-3">Signed in as <span className="text-rose-300/90">@{nickname}</span></h3>
               <button
-                onClick={handleResetConfig}
-                className="w-full py-2 px-4 bg-rose-400/10 hover:bg-rose-400/20 text-rose-400 font-semibold text-xs rounded-xl flex items-center justify-center gap-1.5 transition cursor-pointer border border-rose-400/10"
+                onClick={handleSignOut}
+                className="w-full py-2 px-4 bg-white/5 hover:bg-white/10 text-white/60 font-semibold text-xs rounded-xl flex items-center justify-center gap-1.5 transition cursor-pointer border border-white/10"
               >
                 <LogOut className="w-3.5 h-3.5" />
-                Disconnect Database
+                Sign out
               </button>
             </div>
           )}
@@ -1664,7 +1875,7 @@ export default function App() {
             </div>
 
             <p className="text-white/25 text-xs mt-8 text-center">
-              made for late-night doodles <span className="text-rose-400/70">♥</span> no accounts, just a link
+              made for late-night doodles <span className="text-rose-400/70">♥</span> drawing as <span className="text-white/40 font-semibold">@{nickname}</span>
             </p>
           </div>
         </div>
@@ -1687,21 +1898,20 @@ export default function App() {
         <button
           onClick={() => setShowSettings(!showSettings)}
           className="absolute top-6 right-6 p-3 bg-white/5 hover:bg-white/10 transition rounded-full border border-white/5 cursor-pointer z-20"
-          title="Database Settings"
+          title="Account"
         >
           <Settings className="w-5 h-5 text-white/40" />
         </button>
 
         {showSettings && (
           <div className="absolute top-20 right-6 z-50 w-64 glass-card-strong rounded-2xl p-4 animate-fade-in">
-            <h3 className="text-sm font-bold text-white/70 mb-2">Database Connected</h3>
-            <p className="text-xs text-white/30 mb-4 font-mono truncate">{firebaseConfig.projectId}</p>
+            <h3 className="text-sm font-bold text-white/70 mb-3">Signed in as <span className="text-rose-300/90">@{nickname}</span></h3>
             <button
-              onClick={handleResetConfig}
-              className="w-full py-2 px-4 bg-rose-400/10 hover:bg-rose-400/20 text-rose-400 font-semibold text-xs rounded-xl flex items-center justify-center gap-1.5 transition cursor-pointer border border-rose-400/10"
+              onClick={handleSignOut}
+              className="w-full py-2 px-4 bg-white/5 hover:bg-white/10 text-white/60 font-semibold text-xs rounded-xl flex items-center justify-center gap-1.5 transition cursor-pointer border border-white/10"
             >
               <LogOut className="w-3.5 h-3.5" />
-              Disconnect Database
+              Sign out
             </button>
           </div>
         )}
@@ -1796,38 +2006,25 @@ export default function App() {
   }
 
   // Screen C: Room joined but Nickname Onboarding is required
-  if (!nickname) {
+  // Screen C: You were removed from this room by its host.
+  if (isBannedHere) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6 relative overflow-hidden">
         <Atmosphere />
-        <div className="w-full max-w-sm glass-card-strong rounded-3xl p-8 flex flex-col items-center relative z-10 animate-fade-in">
-          <h2 className="text-xl font-bold text-white/90 text-center mb-2 font-display">Joining Room</h2>
-          <span className="px-3 py-1 bg-amber-400/10 border border-amber-400/20 text-amber-400/80 rounded-full text-xs font-semibold font-mono tracking-tight mb-6">
-            {roomCode}
-          </span>
-
-          <form onSubmit={handleNicknameSubmit} className="w-full space-y-4">
-            <div className="space-y-1.5">
-              <label className="block text-[10px] font-semibold uppercase tracking-widest text-white/25 text-center">{roomMaxParticipants > 2 ? 'What should the group call you?' : 'What should your partner call you?'}</label>
-              <input
-                type="text"
-                maxLength={16}
-                value={nicknameInput}
-                onChange={(e) => setNicknameInput(e.target.value)}
-                placeholder="Your cute nickname..."
-                className="w-full px-4 py-3 glass-input rounded-2xl text-center text-sm transition"
-                required
-              />
-            </div>
-
-            <button
-              type="submit"
-              className="w-full btn-gradient py-3 px-6 rounded-2xl flex items-center justify-center gap-2 text-sm cursor-pointer"
-            >
-              <span>Enter Canvas</span>
-              <Heart className="w-4 h-4" />
-            </button>
-          </form>
+        <div className="w-full max-w-md glass-card-strong rounded-3xl p-8 flex flex-col items-center text-center relative z-10 animate-fade-in">
+          <div className="w-14 h-14 rounded-full bg-rose-400/10 flex items-center justify-center mb-6">
+            <HeartOff className="w-7 h-7 text-rose-400" />
+          </div>
+          <h2 className="text-2xl font-extrabold text-white/90 tracking-tight mb-2 font-display">Removed from room</h2>
+          <p className="text-white/35 text-sm mb-6">
+            The host of <span className="font-mono text-amber-300/80">{roomCode}</span> removed you. They can let you back in from their participants list.
+          </p>
+          <button
+            onClick={() => { setRoomCode(''); setSelectedMode(null); }}
+            className="w-full btn-gradient py-3 px-6 rounded-2xl cursor-pointer text-sm"
+          >
+            Back to Lobby
+          </button>
         </div>
       </div>
     );
@@ -1885,15 +2082,21 @@ export default function App() {
 
         {/* Right Side: Partner Presence indicator & Actions */}
         <div className="flex items-center gap-2.5">
-          {/* Presence: overlapping avatar stack + gentle status */}
-          <div className="hidden sm:flex items-center gap-2.5">
-            <div className="flex items-center -space-x-2">
+          {/* Presence: overlapping avatar stack — click for the participants list */}
+          <div className="hidden sm:flex items-center gap-2.5 relative">
+            <button
+              onClick={() => setShowParticipants(v => !v)}
+              className="flex items-center -space-x-2 cursor-pointer rounded-full px-0.5 py-0.5 hover:bg-white/5 transition"
+              title="Who's here"
+            >
               {/* You */}
               <span
-                className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white ring-2 ring-[var(--avatar-ring)] bg-gradient-to-br from-rose-400 to-amber-400 lowercase"
-                title={`You (${nickname})`}
+                className="relative w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white ring-2 ring-[var(--avatar-ring)] bg-gradient-to-br from-rose-400 to-amber-400 lowercase"
               >
                 {nickname.slice(0, 1) || '·'}
+                {isRoomOwner && (
+                  <Crown className="absolute -top-2 left-1/2 -translate-x-1/2 w-3 h-3 text-amber-300 fill-amber-300/40" />
+                )}
               </span>
               {/* Partners */}
               {activePresences.map(p => (
@@ -1904,6 +2107,9 @@ export default function App() {
                   title={p.name}
                 >
                   {(p.name || '?').slice(0, 1)}
+                  {p.userId === roomOwnerId && (
+                    <Crown className="absolute -top-2 left-1/2 -translate-x-1/2 w-3 h-3 text-amber-300 fill-amber-300/40" />
+                  )}
                   {p.isDrawing && (
                     <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-[var(--avatar-ring)]" />
                   )}
@@ -1915,13 +2121,88 @@ export default function App() {
                   +1
                 </span>
               )}
-            </div>
+            </button>
             {activePresences.length === 0 && (
               <span className="text-[11px] text-white/35 italic font-medium">
                 {roomMaxParticipants === 2 ? 'waiting for your person…' : 'waiting for the group…'}
               </span>
             )}
+
+            {/* Participants popover — the host sees kick / promote controls */}
+            {showParticipants && (
+              <div className="absolute top-10 right-0 z-50 w-64 glass-card-strong rounded-2xl p-3 animate-fade-in space-y-1">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-white/25 px-1.5 pb-1">In this room</p>
+                {[{ userId, name: nickname, activeColor: null, self: true }, ...activePresences].map(p => (
+                  <div key={p.userId} className="flex items-center gap-2 px-1.5 py-1.5 rounded-xl hover:bg-white/[0.04]">
+                    <span
+                      className={`w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold text-white lowercase shrink-0 ${p.self ? 'bg-gradient-to-br from-rose-400 to-amber-400' : ''}`}
+                      style={p.self ? undefined : { backgroundColor: p.activeColor || '#C85C50' }}
+                    >
+                      {(p.name || '?').slice(0, 1)}
+                    </span>
+                    <span className="text-xs text-white/75 font-semibold truncate flex-grow">
+                      {p.self ? `${p.name} (you)` : p.name}
+                    </span>
+                    {p.userId === roomOwnerId && (
+                      <Crown className="w-3.5 h-3.5 text-amber-300 shrink-0" title="Room host" />
+                    )}
+                    {isRoomOwner && !p.self && (
+                      <>
+                        <button
+                          onClick={() => promoteUser(p.userId, p.name)}
+                          className="p-1.5 rounded-lg text-white/25 hover:bg-amber-400/15 hover:text-amber-300 transition cursor-pointer shrink-0"
+                          title={`Make ${p.name} the host`}
+                        >
+                          <Crown className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => kickUser(p.userId, p.name)}
+                          className="p-1.5 rounded-lg text-white/25 hover:bg-rose-400/15 hover:text-rose-300 transition cursor-pointer shrink-0"
+                          title={`Remove ${p.name} from the room`}
+                        >
+                          <UserX className="w-3.5 h-3.5" />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                ))}
+                {isRoomOwner && roomBanned.length > 0 && (
+                  <>
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-white/25 px-1.5 pt-2 pb-1">Removed</p>
+                    {roomBanned.map(buid => (
+                      <div key={buid} className="flex items-center gap-2 px-1.5 py-1.5 rounded-xl">
+                        <span className="text-xs text-white/40 truncate flex-grow">{roomBannedNames[buid] || 'someone'}</span>
+                        <button
+                          onClick={() => unbanUser(buid)}
+                          className="text-[10px] font-semibold text-emerald-300/80 hover:text-emerald-300 px-2 py-1 rounded-lg hover:bg-emerald-400/10 transition cursor-pointer"
+                        >
+                          let back in
+                        </button>
+                      </div>
+                    ))}
+                  </>
+                )}
+              </div>
+            )}
           </div>
+
+          {/* Friends drawer toggle */}
+          <button
+            onClick={() => { setShowFriends(v => !v); if (showChat) setShowChat(false); }}
+            className={`p-2 relative transition rounded-full border cursor-pointer ${
+              showFriends
+                ? 'bg-rose-400/15 border-rose-400/20 text-rose-400'
+                : 'bg-white/[0.04] hover:bg-white/[0.08] border-white/[0.06] text-white/40'
+            }`}
+            title="Friends"
+          >
+            <UserPlus className="w-4 h-4" />
+            {friendRequestCount > 0 && (
+              <span className="absolute -top-1 -right-1 bg-rose-500 text-white font-bold text-[9px] w-4 h-4 rounded-full flex items-center justify-center" style={{ boxShadow: '0 0 8px rgba(244,63,94,0.5)' }}>
+                {friendRequestCount}
+              </span>
+            )}
+          </button>
 
           {/* Send a nudge */}
           <button
@@ -1938,7 +2219,7 @@ export default function App() {
 
           {/* Chat Panel Toggle */}
           <button
-            onClick={() => setShowChat(!showChat)}
+            onClick={() => { setShowChat(!showChat); if (showFriends) setShowFriends(false); }}
             className={`p-2 relative transition rounded-full border cursor-pointer ${
               showChat
                 ? 'bg-rose-400/15 border-rose-400/20 text-rose-400'
@@ -2018,6 +2299,15 @@ export default function App() {
                   className={`w-full h-full touch-none cursor-none ${isDrawing ? 'canvas-drawing' : ''}`}
                   style={{ backgroundColor: '#FBF6EE' }}
                 />
+
+                {/* Replay ribbon */}
+                {isReplaying && (
+                  <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 pointer-events-none animate-fade-in">
+                    <span className="bg-gray-900/80 text-amber-200/90 text-[10px] font-semibold px-3 py-1.5 rounded-full backdrop-blur-sm flex items-center gap-1.5 border border-white/10">
+                      <Play className="w-3 h-3" /> replaying your story…
+                    </span>
+                  </div>
+                )}
 
                 {/* Local Custom Cursor Overlay */}
                 <div
@@ -2240,6 +2530,20 @@ export default function App() {
                   </button>
 
                   <button
+                    onClick={isReplaying ? stopReplay : startReplay}
+                    disabled={!isReplaying && visibleStrokes.length === 0}
+                    className={`px-3.5 py-1.5 rounded-xl border flex items-center gap-1.5 text-xs font-semibold transition cursor-pointer disabled:opacity-25 disabled:cursor-not-allowed ${
+                      isReplaying
+                        ? 'bg-amber-400/15 text-amber-300 border-amber-400/25'
+                        : 'bg-white/5 hover:bg-white/10 text-white/50 hover:text-white/80 border-white/5'
+                    }`}
+                    title={isReplaying ? 'Stop the replay' : 'Watch this drawing come together'}
+                  >
+                    {isReplaying ? <X className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                    <span className="hidden sm:inline">{isReplaying ? 'Stop' : 'Replay'}</span>
+                  </button>
+
+                  <button
                     onClick={handleDownloadCanvas}
                     className="px-3.5 py-1.5 bg-white/5 hover:bg-white/10 text-white/50 hover:text-white/80 rounded-xl border border-white/5 flex items-center gap-1.5 text-xs font-semibold transition cursor-pointer"
                     title="Download drawing"
@@ -2264,6 +2568,16 @@ export default function App() {
         </div>
 
         {/* Right Section: Collapsible Chat Sidebar */}
+        {showFriends && (
+          <FriendsPanel
+            db={db}
+            uid={userId}
+            username={nickname}
+            onJoinRoom={(code) => { setShowFriends(false); setRoomCode(code); }}
+            onClose={() => setShowFriends(false)}
+          />
+        )}
+
         {showChat && (
           <div className="chat-surface fixed z-30 flex flex-col shadow-2xl glass-card-strong min-h-0 w-full h-full inset-0 sm:w-80 sm:h-auto sm:inset-auto sm:top-[68px] sm:bottom-5 sm:right-5 rounded-none sm:rounded-2xl animate-slide-in-right overflow-hidden">
 
